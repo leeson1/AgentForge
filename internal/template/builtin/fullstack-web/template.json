@@ -1,0 +1,19 @@
+{
+  "id": "fullstack-web",
+  "name": "Fullstack Web Application",
+  "description": "Optimized for fullstack web projects (React/Vue + Node/Go backend). Includes dev server hooks and HTTP health checks.",
+  "category": "web",
+  "prompts": {
+    "initializer": "initializer.txt",
+    "worker": "worker.txt"
+  },
+  "hooks": {
+    "on_session_start": "on_session_start.sh",
+    "on_session_end": null
+  },
+  "validator": "e2e_check.sh",
+  "variables": {
+    "dev_server_port": "3000",
+    "api_server_port": "8080"
+  }
+}

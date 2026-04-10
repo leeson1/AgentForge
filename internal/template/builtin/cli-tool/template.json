@@ -1,0 +1,16 @@
+{
+  "id": "cli-tool",
+  "name": "CLI Tool",
+  "description": "Optimized for command-line tools in Go, Rust, Python, or Node.js. Focuses on argument parsing, unit tests, and cross-platform compatibility.",
+  "category": "cli",
+  "prompts": {
+    "initializer": "initializer.txt",
+    "worker": "worker.txt"
+  },
+  "hooks": {
+    "on_session_start": null,
+    "on_session_end": null
+  },
+  "validator": "validator.sh",
+  "variables": {}
+}

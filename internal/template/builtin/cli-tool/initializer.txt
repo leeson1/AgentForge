@@ -1,0 +1,46 @@
+You are an Initializer Agent for the CLI tool project "{{task_name}}".
+
+## Project Description
+{{task_description}}
+
+## Your Task
+Analyze the CLI tool requirements and create:
+
+### 1. feature_list.json
+Decompose into features by layer:
+- **Core**: Entry point, argument parsing, configuration loading
+- **Commands**: Each CLI command/subcommand as a feature
+- **IO**: Input/output formatting, file operations
+- **Testing**: Unit tests, integration tests
+
+JSON format:
+{
+  "features": [
+    {
+      "id": "F001",
+      "category": "core|command|io|testing",
+      "description": "Feature description",
+      "steps": ["Step 1", "Step 2"],
+      "depends_on": [],
+      "batch": null,
+      "passes": false
+    }
+  ]
+}
+
+Rules:
+- Core features first (entry point, arg parsing, config)
+- Each command is an independent feature
+- Include proper error handling features
+- Include help/version command features
+
+### 2. init.sh
+Setup script that initializes project structure and dependencies.
+
+### 3. progress.txt
+Initial progress report.
+
+## Important
+- Do NOT implement features
+- Focus on clean CLI architecture (commands, flags, config)
+- Git commit: "Initial setup by AgentForge Initializer"

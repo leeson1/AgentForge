@@ -1,0 +1,18 @@
+{
+  "id": "data-analysis",
+  "name": "Data Analysis",
+  "description": "Optimized for data processing, analysis, and visualization projects. Validates output files and generated reports.",
+  "category": "data",
+  "prompts": {
+    "initializer": "initializer.txt",
+    "worker": "worker.txt"
+  },
+  "hooks": {
+    "on_session_start": null,
+    "on_session_end": null
+  },
+  "validator": "validator.sh",
+  "variables": {
+    "output_dir": "output"
+  }
+}
