@@ -174,6 +174,11 @@ func (s *TaskStore) GetProgress(taskID string) (string, error) {
 	return string(data), nil
 }
 
+// PromptsDir 返回指定任务的 prompts 目录
+func (s *TaskStore) PromptsDir(taskID string) string {
+	return filepath.Join(s.taskDir(taskID), promptsDirName)
+}
+
 // writeJSON 将对象序列化为 JSON 并写入文件
 func (s *TaskStore) writeJSON(path string, v interface{}) error {
 	data, err := json.MarshalIndent(v, "", "  ")
