@@ -99,7 +99,7 @@ export function LogsTab() {
 
         const lines: LogLine[] = rawLines
           .filter((l) => l.trim())
-          .map((l, i) => ({
+          .map((l, _i) => ({
             timestamp: new Date().toISOString(),
             level: parseLevel(l),
             content: l,

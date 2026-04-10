@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { Outlet, useParams, useNavigate, useLocation } from 'react-router-dom';
-import { Hammer, Wifi, WifiOff, LayoutDashboard, FileBox, Settings } from 'lucide-react';
+import { Hammer, Wifi, WifiOff } from 'lucide-react';
 import { useTaskStore } from '../stores/taskStore';
 import { useWSStore } from '../stores/wsStore';
 import { TaskSidebar } from './TaskSidebar';

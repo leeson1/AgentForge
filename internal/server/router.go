@@ -1,7 +1,11 @@
 package server
 
 import (
+	"io/fs"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -105,5 +109,38 @@ func (s *Server) setupRouter() chi.Router {
 		r.Get("/health", s.HealthCheck)
 	})
 
+	// 前端静态文件服务（SPA fallback）
+	staticDir := findStaticDir()
+	if staticDir != "" {
+		fileServer := http.FileServer(http.Dir(staticDir))
+		r.Get("/*", func(w http.ResponseWriter, req *http.Request) {
+			// 如果文件存在，直接 serve
+			path := filepath.Join(staticDir, strings.TrimPrefix(req.URL.Path, "/"))
+			if info, err := os.Stat(path); err == nil && !info.IsDir() {
+				fileServer.ServeHTTP(w, req)
+				return
+			}
+			// SPA fallback: 返回 index.html
+			http.ServeFile(w, req, filepath.Join(staticDir, "index.html"))
+		})
+	}
+
 	return r
+}
+
+// findStaticDir 查找前端构建产出目录
+func findStaticDir() string {
+	candidates := []string{
+		"/app/web/dist",       // Docker 容器
+		"web/dist",            // 本地开发（项目根目录运行）
+		"../web/dist",         // 本地开发（从 cmd/ 运行）
+	}
+	for _, dir := range candidates {
+		if info, err := os.Stat(dir); err == nil && info.IsDir() {
+			if _, err := fs.Stat(os.DirFS(dir), "index.html"); err == nil {
+				return dir
+			}
+		}
+	}
+	return ""
 }

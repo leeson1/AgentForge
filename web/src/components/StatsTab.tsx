@@ -170,7 +170,7 @@ export function StatsTab() {
                   <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                   <XAxis dataKey="name" tick={{ fontSize: 11 }} />
                   <YAxis tick={{ fontSize: 11 }} tickFormatter={formatNumber} />
-                  <Tooltip formatter={(v: number) => formatNumber(v)} />
+                  <Tooltip formatter={(v) => formatNumber(Number(v))} />
                   <Legend iconSize={8} wrapperStyle={{ fontSize: 11 }} />
                   <Line
                     type="monotone"
@@ -201,7 +201,7 @@ export function StatsTab() {
                   <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                   <XAxis dataKey="name" tick={{ fontSize: 11 }} />
                   <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `$${v}`} />
-                  <Tooltip formatter={(v: number) => `$${v.toFixed(4)}`} />
+                  <Tooltip formatter={(v) => `$${Number(v).toFixed(4)}`} />
                   <Legend iconSize={8} wrapperStyle={{ fontSize: 11 }} />
                   <Bar dataKey="cost" fill="#10b981" name="Session Cost" radius={[3, 3, 0, 0]} />
                   <Line
@@ -224,7 +224,7 @@ export function StatsTab() {
                   <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                   <XAxis dataKey="name" tick={{ fontSize: 11 }} />
                   <YAxis tick={{ fontSize: 11 }} unit="s" />
-                  <Tooltip formatter={(v: number) => `${v}s`} />
+                  <Tooltip formatter={(v) => `${v}s`} />
                   <Bar dataKey="duration" fill="#8b5cf6" name="Duration" radius={[3, 3, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
@@ -239,7 +239,7 @@ export function StatsTab() {
                   <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                   <XAxis dataKey="name" tick={{ fontSize: 11 }} />
                   <YAxis tick={{ fontSize: 11 }} unit="s" />
-                  <Tooltip formatter={(v: number) => `${v}s`} />
+                  <Tooltip formatter={(v) => `${v}s`} />
                   <Bar dataKey="duration" fill="#0ea5e9" name="Duration" radius={[3, 3, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>

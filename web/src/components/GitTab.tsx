@@ -27,7 +27,7 @@ export function GitTab() {
     // 从 API 获取 git log（通过 events 推导或直接 API）
     api
       .getEvents(activeTaskId)
-      .then((events) => {
+      .then((events: string[]) => {
         // 从事件中解析 commit 信息
         const parsed: CommitInfo[] = [];
         for (const raw of events) {
@@ -194,7 +194,13 @@ export function GitTab() {
               <button
                 onClick={async () => {
                   try {
-                    await api.post(`/api/tasks/${taskId}/git/rollback`, { commit: rollbackConfirm });
+                    if (activeTaskId) {
+                      await fetch(`/api/tasks/${activeTaskId}/git/rollback`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ commit: rollbackConfirm }),
+                      });
+                    }
                   } catch {
                     // Rollback may not be supported yet
                   }
