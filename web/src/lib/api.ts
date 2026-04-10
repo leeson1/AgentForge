@@ -77,6 +77,21 @@ export interface CreateTaskRequest {
   };
 }
 
+export interface InterventionRequest {
+  content: string;
+  target_worker?: string;
+}
+
+/** WebSocket 事件 (来自后端 EventBus) */
+export interface WSEvent {
+  id: string;
+  type: string;
+  task_id: string;
+  session_id?: string;
+  data: Record<string, unknown>;
+  timestamp: string;
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, {
     headers: { 'Content-Type': 'application/json' },
@@ -130,6 +145,13 @@ export const api = {
   // Events
   getEvents: (taskId: string) =>
     request<string[]>(`/tasks/${taskId}/events`),
+
+  // Intervention
+  sendIntervention: (taskId: string, data: InterventionRequest) =>
+    request<{ message: string }>(`/tasks/${taskId}/intervene`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
 
   // Health
   health: () => request<{ status: string }>('/health'),
