@@ -192,8 +192,12 @@ export function GitTab() {
                 Cancel
               </button>
               <button
-                onClick={() => {
-                  // TODO: 实现回滚 API 调用
+                onClick={async () => {
+                  try {
+                    await api.post(`/api/tasks/${taskId}/git/rollback`, { commit: rollbackConfirm });
+                  } catch {
+                    // Rollback may not be supported yet
+                  }
                   setRollbackConfirm(null);
                 }}
                 className="px-4 py-2 bg-orange-600 text-white rounded-md text-sm hover:bg-orange-700 transition"

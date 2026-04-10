@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  agentforge:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: agentforge
+    ports:
+      - "${AF_PORT:-8080}:8080"
+    volumes:
+      # AgentForge 数据持久化
+      - agentforge-data:/data/.agent-forge
+      # 工作区目录（映射主机项目目录）
+      - ${AF_WORKSPACE:-./workspace}:/workspace
+      # Git 配置
+      - ~/.gitconfig:/home/agentforge/.gitconfig:ro
+      - ~/.ssh:/home/agentforge/.ssh:ro
+    environment:
+      - AGENT_FORGE_HOME=/data/.agent-forge
+      - AF_PORT=${AF_PORT:-8080}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+
+volumes:
+  agentforge-data:

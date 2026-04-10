@@ -1,0 +1,12 @@
+bin/
+web/dist/
+web/node_modules/
+*.log
+*.tmp
+.git/
+.agent-forge/
+coverage.out
+coverage.html
+*.md
+!README.md
+docs/
