@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
@@ -11,9 +12,6 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/leeson1/agent-forge/internal/config"
-	"github.com/leeson1/agent-forge/internal/server"
-	"github.com/leeson1/agent-forge/internal/session"
 	"github.com/leeson1/agent-forge/internal/store"
 	"github.com/leeson1/agent-forge/internal/stream"
 	"github.com/leeson1/agent-forge/internal/task"
@@ -74,52 +72,30 @@ func newServeCmd() *cobra.Command {
 }
 
 func runServe(cmd *cobra.Command, args []string) error {
-	// 初始化存储目录
-	if err := store.Init(); err != nil {
-		return fmt.Errorf("init storage: %w", err)
-	}
-
-	// 加载配置
-	cfg, err := config.Load("")
+	runtime, err := bootstrapRuntime()
 	if err != nil {
-		return fmt.Errorf("load config: %w", err)
+		return err
 	}
 
 	// 命令行参数覆盖
 	if p, _ := cmd.Flags().GetInt("port"); p > 0 {
-		cfg.Server.Port = p
+		runtime.cfg.Server.Port = p
 	}
 	if h, _ := cmd.Flags().GetString("host"); h != "" {
-		cfg.Server.Host = h
+		runtime.cfg.Server.Host = h
 	}
 
-	// 创建核心组件
-	baseDir := store.BaseDir()
-	taskStore := store.NewTaskStore(baseDir)
-	sessionStore := store.NewSessionStore(baseDir)
-	logStore := store.NewLogStore(baseDir)
-	eventBus := stream.NewEventBus(100)
-
-	// 创建 Claude CLI 执行器
-	execConfig := session.DefaultExecutorConfig()
-	if cfg.CLI.ClaudePath != "" {
-		execConfig.ClaudePath = cfg.CLI.ClaudePath
-	}
-	executor := session.NewExecutor(baseDir, execConfig)
-
-	srv := server.NewServer(eventBus, taskStore, sessionStore, logStore, executor)
-
-	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
+	addr := fmt.Sprintf("%s:%d", runtime.cfg.Server.Host, runtime.cfg.Server.Port)
 
 	fmt.Printf("\n%s🔨 AgentForge v%s%s\n", colorBold, version, colorReset)
 	fmt.Printf("   %sServer:%s  http://%s\n", colorCyan, colorReset, addr)
 	fmt.Printf("   %sWebSocket:%s ws://%s/api/ws\n", colorCyan, colorReset, addr)
-	fmt.Printf("   %sStorage:%s  %s\n", colorCyan, colorReset, baseDir)
+	fmt.Printf("   %sStorage:%s  %s\n", colorCyan, colorReset, runtime.baseDir)
 	fmt.Printf("   %sPress Ctrl+C to stop%s\n\n", colorGray, colorReset)
 
 	httpSrv := &http.Server{
 		Addr:    addr,
-		Handler: srv,
+		Handler: runtime.httpServer,
 	}
 
 	// 优雅关闭
@@ -230,37 +206,66 @@ func newRunCmd() *cobra.Command {
 }
 
 func runRun(cmd *cobra.Command, args []string) error {
-	taskID := args[0]
-	taskStore := store.NewTaskStore(store.BaseDir())
+	runtime, err := bootstrapRuntime()
+	if err != nil {
+		return err
+	}
 
-	t, err := taskStore.Get(taskID)
+	taskID := args[0]
+	t, err := runtime.taskStore.Get(taskID)
 	if err != nil {
 		return fmt.Errorf("task %q not found: %w", taskID, err)
+	}
+	if t.Status != task.StatusPending && t.Status != task.StatusFailed {
+		return fmt.Errorf("task cannot be started from status: %s", t.Status)
 	}
 
 	fmt.Printf("%s▶️  Starting task: %s (%s)%s\n", colorGreen, t.Name, shortID(t.ID), colorReset)
 	fmt.Printf("   Status: %s → running\n", t.Status)
 
-	// 更新状态
-	if err := t.TransitionTo(task.StatusRunning); err != nil {
-		// 如果不能直接到 running，尝试先初始化
-		if err2 := t.TransitionTo(task.StatusInitializing); err2 != nil {
-			return fmt.Errorf("cannot start task (current: %s): %v", t.Status, err)
-		}
-	}
-	if err := taskStore.Update(t); err != nil {
-		return fmt.Errorf("update task: %w", err)
-	}
-
-	fmt.Printf("   %s✅ Task started%s\n", colorGreen, colorReset)
-
 	follow, _ := cmd.Flags().GetBool("follow")
+	done := make(chan struct{})
 	if follow {
-		fmt.Printf("\n   %s[Following logs - Press Ctrl+C to stop]%s\n\n", colorGray, colorReset)
-		fmt.Printf("   Waiting for agent output...\n")
+		sub := runtime.eventBus.Subscribe(fmt.Sprintf("cli-follow-%d", time.Now().UnixNano()), taskID)
+		defer runtime.eventBus.Unsubscribe(sub.ID)
+		fmt.Printf("\n   %s[Following task events]%s\n\n", colorGray, colorReset)
+		go func() {
+			for {
+				select {
+				case <-done:
+					return
+				case event, ok := <-sub.Channel:
+					if !ok {
+						return
+					}
+					printEventForCLI(event)
+				}
+			}
+		}()
 	}
 
-	return nil
+	runtime.pipeline.Run(t)
+	close(done)
+
+	refreshed, err := runtime.taskStore.Get(taskID)
+	if err == nil {
+		t = refreshed
+	}
+	if follow {
+		fmt.Println()
+	}
+
+	switch t.Status {
+	case task.StatusCompleted:
+		fmt.Printf("   %s✅ Task completed%s\n", colorGreen, colorReset)
+		return nil
+	case task.StatusConflictWait:
+		return fmt.Errorf("task is waiting for manual conflict resolution")
+	case task.StatusCancelled:
+		return fmt.Errorf("task was cancelled")
+	default:
+		return fmt.Errorf("task finished with status %s", t.Status)
+	}
 }
 
 // ==================== stop ====================
@@ -517,5 +522,40 @@ func printColoredLog(line string) {
 		fmt.Printf("  %s%s%s\n", colorGreen, line, colorReset)
 	default:
 		fmt.Printf("  %s\n", line)
+	}
+}
+
+func printEventForCLI(event *stream.Event) {
+	var payload map[string]interface{}
+	_ = json.Unmarshal(event.Data, &payload)
+
+	switch event.Type {
+	case stream.EventAgentMessage, stream.EventLog:
+		if content, ok := payload["content"].(string); ok && content != "" {
+			printColoredLog(content)
+		}
+	case stream.EventToolCall:
+		toolName, _ := payload["tool_name"].(string)
+		toolInput, _ := payload["tool_input"].(string)
+		printColoredLog(fmt.Sprintf("[tool] %s %s", toolName, toolInput))
+	case stream.EventTaskStatus:
+		status, _ := payload["status"].(string)
+		message, _ := payload["message"].(string)
+		if message != "" {
+			printColoredLog(fmt.Sprintf("[task:%s] %s", status, message))
+		} else {
+			printColoredLog(fmt.Sprintf("[task] status=%s", status))
+		}
+	case stream.EventBatchUpdate:
+		status, _ := payload["status"].(string)
+		batchNum, _ := payload["batch_num"].(float64)
+		printColoredLog(fmt.Sprintf("[batch %.0f] %s", batchNum+1, status))
+	case stream.EventSessionStart:
+		printColoredLog(fmt.Sprintf("[session] started %s", event.SessionID))
+	case stream.EventSessionEnd:
+		printColoredLog(fmt.Sprintf("[session] ended %s", event.SessionID))
+	case stream.EventMergeConflict:
+		featureID, _ := payload["feature_id"].(string)
+		printColoredLog(fmt.Sprintf("[conflict] %s", featureID))
 	}
 }

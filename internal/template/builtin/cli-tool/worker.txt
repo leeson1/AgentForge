@@ -26,4 +26,4 @@ Description: {{feature_description}}
 3. Implement the feature
 4. Write tests and ensure they pass
 5. Run validation: {{validator_command}}
-6. Git commit, update progress.txt and feature_list.json
+6. Git commit with a clear message and leave feature_list.json / progress.txt unchanged

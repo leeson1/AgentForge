@@ -156,7 +156,7 @@ echo '{"type":"result","subtype":"success","is_error":false,"session_id":"x","us
 
 	tsk := task.NewTask("test-task", "Test", "desc", "default", task.TaskConfig{})
 
-	result := resolver.ThreeLevelResolve(tsk, "F001", "agentforge/test-task/F001", []string{"README.md"})
+	result := resolver.ThreeLevelResolve(tsk, "F001", "agentforge/test-task/F001", []string{"README.md"}, "echo ok")
 	if !result.Success {
 		t.Errorf("ThreeLevelResolve should succeed at Level 1, got: %s", result.Error)
 	}

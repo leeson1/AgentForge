@@ -27,7 +27,7 @@ Description: {{feature_description}}
 4. Write basic tests for your implementation
 5. Run the validation: {{validator_command}}
 6. Git commit with descriptive message
-7. Update progress.txt and feature_list.json (set passes=true if complete)
+7. Leave feature_list.json and progress.txt unchanged; the coordinator updates shared task metadata
 
 ## Rules
 - Only modify files related to YOUR assigned feature

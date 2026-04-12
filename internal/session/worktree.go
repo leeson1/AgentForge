@@ -24,14 +24,19 @@ type WorktreeInfo struct {
 	Path      string // worktree 路径
 	Branch    string // 分支名
 	FeatureID string // 关联的 feature ID
+	BaseCommit string // 创建 worktree 时的 HEAD commit
 }
 
 // Create 创建 worktree + 新分支
 // 分支名格式：agentforge/{taskID}/{featureID}
-// worktree 路径：{repoDir}/.worktrees/{featureID}
+// worktree 路径：{repoDir}/.worktrees/{taskID}/{featureID}
 func (wm *WorktreeManager) Create(taskID, featureID string) (*WorktreeInfo, error) {
 	branch := fmt.Sprintf("agentforge/%s/%s", taskID, featureID)
-	wtPath := filepath.Join(wm.repoDir, ".worktrees", featureID)
+	wtPath := filepath.Join(wm.repoDir, ".worktrees", taskID, featureID)
+	baseCommit, err := HeadCommit(wm.repoDir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve base commit: %w", err)
+	}
 
 	// 确保 .worktrees 目录存在
 	if err := os.MkdirAll(filepath.Dir(wtPath), 0755); err != nil {
@@ -50,12 +55,13 @@ func (wm *WorktreeManager) Create(taskID, featureID string) (*WorktreeInfo, erro
 		Path:      wtPath,
 		Branch:    branch,
 		FeatureID: featureID,
+		BaseCommit: baseCommit,
 	}, nil
 }
 
 // Remove 移除 worktree 并删除分支
-func (wm *WorktreeManager) Remove(featureID string) error {
-	wtPath := filepath.Join(wm.repoDir, ".worktrees", featureID)
+func (wm *WorktreeManager) Remove(taskID, featureID string) error {
+	wtPath := filepath.Join(wm.repoDir, ".worktrees", taskID, featureID)
 
 	// 移除 worktree
 	cmd := exec.Command("git", "worktree", "remove", wtPath, "--force")
@@ -73,7 +79,7 @@ func (wm *WorktreeManager) Remove(featureID string) error {
 
 // RemoveWithBranch 移除 worktree 并删除关联分支
 func (wm *WorktreeManager) RemoveWithBranch(taskID, featureID string) error {
-	if err := wm.Remove(featureID); err != nil {
+	if err := wm.Remove(taskID, featureID); err != nil {
 		return err
 	}
 

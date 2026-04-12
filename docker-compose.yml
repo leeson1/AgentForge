@@ -11,6 +11,9 @@ services:
       - agentforge-data:/data/.agent-forge
       # 工作区目录（映射主机项目目录）
       - ${AF_WORKSPACE:-./workspace}:/workspace
+      # Claude Code 认证（订阅用户 OAuth 凭证）
+      - ~/.claude:/home/agentforge/.claude
+      - ~/.claude.json:/home/agentforge/.claude.json
       # Git 配置
       - ~/.gitconfig:/home/agentforge/.gitconfig:ro
       - ~/.ssh:/home/agentforge/.ssh:ro

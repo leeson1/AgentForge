@@ -7,6 +7,7 @@ import (
 	"github.com/leeson1/agent-forge/internal/session"
 	"github.com/leeson1/agent-forge/internal/store"
 	"github.com/leeson1/agent-forge/internal/task"
+	"github.com/leeson1/agent-forge/internal/template"
 )
 
 // BatchRunner Batch 并行执行控制器
@@ -52,6 +53,7 @@ type BatchRunConfig struct {
 	FeatureList     *task.FeatureList // 完整 feature list（用于获取 pending features）
 	ProgressContent string
 	ValidatorCmd    string
+	Template        *template.Template
 }
 
 // BatchRunResult Batch 执行结果
@@ -112,17 +114,20 @@ func (br *BatchRunner) Run(config BatchRunConfig) *BatchRunResult {
 			// 运行 Worker
 			worker := NewWorker(br.executor, br.taskStore, br.sessionStore, br.logStore)
 			worker.OnEvent = br.OnEvent
-			wr := worker.Run(WorkerConfig{
-				TaskID:           config.TaskID,
-				TaskName:         config.TaskName,
-				Feature:          f,
-				BatchNum:         config.BatchNum,
-				SessionNumber:    sn,
-				WorkDir:          wtInfo.Path,
-				ProgressContent:  config.ProgressContent,
-				PendingFeatures:  pendingText,
-				ValidatorCommand: config.ValidatorCmd,
-			})
+				wr := worker.Run(WorkerConfig{
+					TaskID:           config.TaskID,
+					TaskName:         config.TaskName,
+					Feature:          f,
+					BatchNum:         config.BatchNum,
+					SessionNumber:    sn,
+					WorkDir:          wtInfo.Path,
+					ProgressContent:  config.ProgressContent,
+					PendingFeatures:  pendingText,
+					ValidatorCommand: config.ValidatorCmd,
+					Template:         config.Template,
+					Branch:           wtInfo.Branch,
+					BaseCommit:       wtInfo.BaseCommit,
+				})
 
 			mu.Lock()
 			result.Results = append(result.Results, wr)

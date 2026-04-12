@@ -12,6 +12,7 @@ import (
 	"github.com/leeson1/agent-forge/internal/store"
 	"github.com/leeson1/agent-forge/internal/stream"
 	"github.com/leeson1/agent-forge/internal/task"
+	"github.com/leeson1/agent-forge/internal/template"
 )
 
 func setupTestServer(t *testing.T) *Server {
@@ -22,7 +23,11 @@ func setupTestServer(t *testing.T) *Server {
 	ss := store.NewSessionStore(baseDir)
 	ls := store.NewLogStore(baseDir)
 	exec := session.NewExecutor(baseDir, session.DefaultExecutorConfig())
-	return NewServer(eb, ts, ss, ls, exec)
+	registry, err := template.NewRegistryWithBuiltins()
+	if err != nil {
+		t.Fatalf("load templates: %v", err)
+	}
+	return NewServer(eb, ts, ss, ls, exec, registry)
 }
 
 func TestHealthCheck(t *testing.T) {
@@ -265,6 +270,26 @@ func TestStartTask(t *testing.T) {
 
 	// 等后台 pipeline goroutine 结束（它会因为找不到 claude CLI 快速失败）
 	time.Sleep(500 * time.Millisecond)
+}
+
+func TestListTemplates(t *testing.T) {
+	s := setupTestServer(t)
+
+	req := httptest.NewRequest("GET", "/api/templates", nil)
+	w := httptest.NewRecorder()
+	s.Router().ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Status: got %d, want %d", w.Code, http.StatusOK)
+	}
+
+	var templates []TemplateResponse
+	if err := json.NewDecoder(w.Body).Decode(&templates); err != nil {
+		t.Fatalf("Decode failed: %v", err)
+	}
+	if len(templates) == 0 {
+		t.Fatal("Expected at least one template")
+	}
 }
 
 func TestListSessions_Empty(t *testing.T) {

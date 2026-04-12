@@ -113,8 +113,9 @@ const (
 	SEventSystem       SessionEventType = "system"
 )
 
-// ParseStreamLine 解析一行 stream-json 输出
-func ParseStreamLine(line []byte) (*SessionEvent, error) {
+// ParseStreamLine 解析一行 stream-json 输出。
+// 一条 Claude stream-json 记录可能包含多个 content block，因此会返回多个事件。
+func ParseStreamLine(line []byte) ([]*SessionEvent, error) {
 	var raw RawStreamEvent
 	if err := json.Unmarshal(line, &raw); err != nil {
 		return nil, err
@@ -124,19 +125,19 @@ func ParseStreamLine(line []byte) (*SessionEvent, error) {
 
 	switch raw.Type {
 	case EventTypeSystem:
-		return parseSystemEvent(raw, now), nil
+		return []*SessionEvent{parseSystemEvent(raw, now)}, nil
 	case EventTypeAssistant:
 		return parseAssistantEvent(raw, now)
 	case EventTypeResult:
-		return parseResultEvent(raw, now), nil
+		return []*SessionEvent{parseResultEvent(raw, now)}, nil
 	default:
 		// 未知类型也返回，标记为 system
-		return &SessionEvent{
+		return []*SessionEvent{{
 			Timestamp: now,
 			Type:      SEventSystem,
 			SessionID: raw.SessionID,
 			RawJSON:   string(line),
-		}, nil
+		}}, nil
 	}
 }
 
@@ -155,25 +156,25 @@ func parseSystemEvent(raw RawStreamEvent, ts time.Time) *SessionEvent {
 	return ev
 }
 
-func parseAssistantEvent(raw RawStreamEvent, ts time.Time) (*SessionEvent, error) {
+func parseAssistantEvent(raw RawStreamEvent, ts time.Time) ([]*SessionEvent, error) {
 	if raw.Message == nil {
-		return &SessionEvent{
+		return []*SessionEvent{{
 			Timestamp: ts,
 			Type:      SEventAgentMessage,
 			SessionID: raw.SessionID,
-		}, nil
+		}}, nil
 	}
 
 	// 解析 content blocks
 	var blocks []ContentBlock
 	if err := json.Unmarshal(raw.Message.Content, &blocks); err != nil {
 		// content 可能是字符串而非数组
-		return &SessionEvent{
+		return []*SessionEvent{{
 			Timestamp: ts,
 			Type:      SEventAgentMessage,
 			SessionID: raw.SessionID,
 			Text:      string(raw.Message.Content),
-		}, nil
+		}}, nil
 	}
 
 	// 提取 token 信息
@@ -213,17 +214,16 @@ func parseAssistantEvent(raw RawStreamEvent, ts time.Time) (*SessionEvent, error
 
 	// 如果没有有效的 block，返回一个空消息事件
 	if len(events) == 0 {
-		return &SessionEvent{
+		return []*SessionEvent{{
 			Timestamp:    ts,
 			Type:         SEventAgentMessage,
 			SessionID:    raw.SessionID,
 			InputTokens:  inputTokens,
 			OutputTokens: outputTokens,
-		}, nil
+		}}, nil
 	}
 
-	// 返回第一个事件（后续可改为返回多个）
-	return events[0], nil
+	return events, nil
 }
 
 func parseResultEvent(raw RawStreamEvent, ts time.Time) *SessionEvent {

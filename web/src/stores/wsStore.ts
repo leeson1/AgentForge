@@ -138,15 +138,22 @@ export const useWSStore = create<WSStore>((set, get) => ({
     };
 
     ws.onmessage = (e) => {
-      try {
-        const event: WSEvent = JSON.parse(e.data);
-        set((s) => ({
-          events: [...s.events.slice(-500), event], // 保留最近 500 条
-        }));
-        // 路由事件到对话 Store
-        routeEventToConversation(event);
-      } catch {
-        // 忽略解析错误
+      const raw = typeof e.data === 'string' ? e.data : '';
+      const frames = raw
+        .split('\n')
+        .map((line) => line.trim())
+        .filter(Boolean);
+
+      for (const frame of frames) {
+        try {
+          const event: WSEvent = JSON.parse(frame);
+          set((s) => ({
+            events: [...s.events.slice(-500), event], // 保留最近 500 条
+          }));
+          routeEventToConversation(event);
+        } catch {
+          // 忽略解析错误
+        }
       }
     };
 

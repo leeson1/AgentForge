@@ -82,6 +82,13 @@ export interface InterventionRequest {
   target_worker?: string;
 }
 
+export interface TemplateInfo {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+}
+
 /** WebSocket 事件 (来自后端 EventBus) */
 export interface WSEvent {
   id: string;
@@ -152,6 +159,9 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(data),
     }),
+
+  // Templates
+  listTemplates: () => request<TemplateInfo[]>('/templates'),
 
   // Health
   health: () => request<{ status: string }>('/health'),

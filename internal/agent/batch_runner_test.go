@@ -75,6 +75,10 @@ func setupBatchRunnerTest(t *testing.T, mockScriptContent string) (*BatchRunner,
 func TestBatchRunner_RunSuccess(t *testing.T) {
 	mockScript := `#!/bin/bash
 cat > /dev/null
+FEATURE_NAME="$(basename "$PWD")"
+echo "$FEATURE_NAME" > "$PWD/$FEATURE_NAME.txt"
+git add "$PWD/$FEATURE_NAME.txt"
+git commit -m "feat: $FEATURE_NAME" >/dev/null
 echo '{"type":"system","subtype":"init","session_id":"br-test"}'
 echo '{"type":"result","subtype":"success","is_error":false,"duration_ms":500,"num_turns":1,"result":"done","stop_reason":"end_turn","total_cost_usd":0.01,"session_id":"br-test","usage":{"input_tokens":20,"output_tokens":10,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}}'
 `
@@ -166,6 +170,10 @@ func TestBatchRunner_MaxParallelOne(t *testing.T) {
 	// maxParallel=1 时应该退化为串行
 	mockScript := `#!/bin/bash
 cat > /dev/null
+FEATURE_NAME="$(basename "$PWD")"
+echo "$FEATURE_NAME" > "$PWD/$FEATURE_NAME.txt"
+git add "$PWD/$FEATURE_NAME.txt"
+git commit -m "feat: $FEATURE_NAME" >/dev/null
 echo '{"type":"system","subtype":"init","session_id":"serial"}'
 echo '{"type":"result","subtype":"success","is_error":false,"duration_ms":100,"num_turns":1,"result":"done","stop_reason":"end_turn","total_cost_usd":0.01,"session_id":"serial","usage":{"input_tokens":10,"output_tokens":5,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}}'
 `

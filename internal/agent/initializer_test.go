@@ -101,7 +101,7 @@ echo '{"type":"result","subtype":"success","is_error":false,"duration_ms":2000,"
 
 	initializer, tsk, _ := setupInitializerTest(t, mockScript)
 
-	result, err := initializer.Run(tsk)
+	result, err := initializer.Run(tsk, nil)
 	if err != nil {
 		t.Fatalf("Initializer.Run failed: %v", err)
 	}
@@ -140,7 +140,7 @@ exit 1
 
 	initializer, tsk, _ := setupInitializerTest(t, mockScript)
 
-	result, err := initializer.Run(tsk)
+	result, err := initializer.Run(tsk, nil)
 	if err == nil {
 		t.Fatal("Expected error from Initializer.Run")
 	}
@@ -175,7 +175,7 @@ echo '{"type":"result","subtype":"success","is_error":false,"duration_ms":1000,"
 
 	initializer, tsk, _ := setupInitializerTest(t, mockScript)
 
-	_, err := initializer.Run(tsk)
+	_, err := initializer.Run(tsk, nil)
 	if err == nil {
 		t.Fatal("Expected error for missing feature_list.json")
 	}
@@ -201,7 +201,7 @@ echo '{"type":"result","subtype":"success","is_error":false,"duration_ms":1000,"
 
 	initializer, tsk, _ := setupInitializerTest(t, mockScript)
 
-	_, err := initializer.Run(tsk)
+	_, err := initializer.Run(tsk, nil)
 	if err == nil {
 		t.Fatal("Expected error for missing init.sh")
 	}
@@ -229,7 +229,7 @@ echo '{"type":"result","subtype":"success","is_error":false,"duration_ms":1000,"
 
 	initializer, tsk, _ := setupInitializerTest(t, mockScript)
 
-	_, err := initializer.Run(tsk)
+	_, err := initializer.Run(tsk, nil)
 	if err == nil {
 		t.Fatal("Expected error for non-executable init.sh")
 	}
@@ -265,7 +265,7 @@ echo '{"type":"result","subtype":"success","is_error":false,"duration_ms":1000,"
 
 	initializer, tsk, _ := setupInitializerTest(t, mockScript)
 
-	_, err := initializer.Run(tsk)
+	_, err := initializer.Run(tsk, nil)
 	if err == nil {
 		t.Fatal("Expected error for invalid feature_list.json (circular dependency)")
 	}
@@ -285,7 +285,7 @@ echo '{"type":"result","subtype":"success","is_error":false,"session_id":"x","us
 	// 设为 completed，不能 transition 到 initializing
 	tsk.Status = task.StatusCompleted
 
-	_, err := initializer.Run(tsk)
+	_, err := initializer.Run(tsk, nil)
 	if err == nil {
 		t.Fatal("Expected error for invalid state transition")
 	}
@@ -365,14 +365,14 @@ func TestValidateProgressFile_Valid(t *testing.T) {
 	os.WriteFile(filepath.Join(workDir, "progress.txt"), []byte("Project: Test\nStatus: OK\n"), 0644)
 
 	init := &Initializer{}
-	if err := init.validateProgressFile(workDir); err != nil {
+	if _, err := init.validateProgressFile(workDir); err != nil {
 		t.Fatalf("validateProgressFile failed: %v", err)
 	}
 }
 
 func TestValidateProgressFile_NotFound(t *testing.T) {
 	init := &Initializer{}
-	if err := init.validateProgressFile(t.TempDir()); err == nil {
+	if _, err := init.validateProgressFile(t.TempDir()); err == nil {
 		t.Fatal("Expected error for missing progress.txt")
 	}
 }
@@ -382,7 +382,7 @@ func TestValidateProgressFile_Empty(t *testing.T) {
 	os.WriteFile(filepath.Join(workDir, "progress.txt"), []byte(""), 0644)
 
 	init := &Initializer{}
-	if err := init.validateProgressFile(workDir); err == nil {
+	if _, err := init.validateProgressFile(workDir); err == nil {
 		t.Fatal("Expected error for empty progress.txt")
 	}
 }

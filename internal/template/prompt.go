@@ -87,11 +87,10 @@ Description: {{feature_description}}
 
 ## Rules
 1. Check intervention.txt before each action for user instructions
-2. Do NOT delete or modify existing entries in feature_list.json descriptions
+2. Treat feature_list.json and progress.txt as coordinator-owned read-only context
 3. Only modify files related to YOUR assigned feature
-4. If stuck after 3 attempts, record the reason in progress.txt and end the session
+4. If stuck after 3 attempts, explain the blocker clearly in your final response and end the session
 5. After completing the feature, run the validation script: {{validator_command}}
-6. Git commit after each meaningful step
-7. Update progress.txt with what you accomplished
-8. When done, update feature_list.json to set your feature's "passes" to true
+6. Git commit after each meaningful implementation step
+7. Leave the worktree clean when you finish
 `

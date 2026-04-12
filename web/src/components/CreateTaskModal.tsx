@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
 import { useTaskStore } from '../stores/taskStore';
+import { api, type TemplateInfo } from '../lib/api';
 
 interface Props {
   onClose: () => void;
@@ -11,11 +12,16 @@ export function CreateTaskModal({ onClose }: Props) {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [template, setTemplate] = useState('default');
+  const [templates, setTemplates] = useState<TemplateInfo[]>([]);
   const [workspaceDir, setWorkspaceDir] = useState('');
   const [maxWorkers, setMaxWorkers] = useState(2);
   const [timeout, setTimeout] = useState('30m');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    api.listTemplates().then(setTemplates).catch(() => setTemplates([]));
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -100,10 +106,11 @@ export function CreateTaskModal({ onClose }: Props) {
                 onChange={(e) => setTemplate(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
               >
-                <option value="default">Default</option>
-                <option value="web-app">Web App</option>
-                <option value="mobile-app">Mobile App</option>
-                <option value="api">API Server</option>
+                {(templates.length > 0 ? templates : [{ id: 'default', name: 'Default', description: '', category: 'general' }]).map((tmpl) => (
+                  <option key={tmpl.id} value={tmpl.id}>
+                    {tmpl.name}
+                  </option>
+                ))}
               </select>
             </div>
             <div>

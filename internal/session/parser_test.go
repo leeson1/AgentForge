@@ -7,10 +7,14 @@ import (
 func TestParseStreamLine_SystemInit(t *testing.T) {
 	line := []byte(`{"type":"system","subtype":"init","cwd":"/workspace","session_id":"abc-123","model":"claude-sonnet-4-6"}`)
 
-	ev, err := ParseStreamLine(line)
+	events, err := ParseStreamLine(line)
 	if err != nil {
 		t.Fatalf("ParseStreamLine failed: %v", err)
 	}
+	if len(events) != 1 {
+		t.Fatalf("Expected 1 event, got %d", len(events))
+	}
+	ev := events[0]
 
 	if ev.Type != SEventInit {
 		t.Errorf("Type: got %s, want %s", ev.Type, SEventInit)
@@ -23,10 +27,14 @@ func TestParseStreamLine_SystemInit(t *testing.T) {
 func TestParseStreamLine_SystemHook(t *testing.T) {
 	line := []byte(`{"type":"system","subtype":"hook_started","hook_name":"SessionStart","session_id":"abc-123"}`)
 
-	ev, err := ParseStreamLine(line)
+	events, err := ParseStreamLine(line)
 	if err != nil {
 		t.Fatalf("ParseStreamLine failed: %v", err)
 	}
+	if len(events) != 1 {
+		t.Fatalf("Expected 1 event, got %d", len(events))
+	}
+	ev := events[0]
 
 	if ev.Type != SEventSystem {
 		t.Errorf("Type: got %s, want %s", ev.Type, SEventSystem)
@@ -45,10 +53,14 @@ func TestParseStreamLine_AssistantTextMessage(t *testing.T) {
 		"session_id": "abc-123"
 	}`)
 
-	ev, err := ParseStreamLine(line)
+	events, err := ParseStreamLine(line)
 	if err != nil {
 		t.Fatalf("ParseStreamLine failed: %v", err)
 	}
+	if len(events) != 1 {
+		t.Fatalf("Expected 1 event, got %d", len(events))
+	}
+	ev := events[0]
 
 	if ev.Type != SEventAgentMessage {
 		t.Errorf("Type: got %s, want %s", ev.Type, SEventAgentMessage)
@@ -76,10 +88,14 @@ func TestParseStreamLine_AssistantToolUse(t *testing.T) {
 		"session_id": "abc-123"
 	}`)
 
-	ev, err := ParseStreamLine(line)
+	events, err := ParseStreamLine(line)
 	if err != nil {
 		t.Fatalf("ParseStreamLine failed: %v", err)
 	}
+	if len(events) != 1 {
+		t.Fatalf("Expected 1 event, got %d", len(events))
+	}
+	ev := events[0]
 
 	if ev.Type != SEventToolCall {
 		t.Errorf("Type: got %s, want %s", ev.Type, SEventToolCall)
@@ -89,6 +105,40 @@ func TestParseStreamLine_AssistantToolUse(t *testing.T) {
 	}
 	if ev.ToolInput == "" {
 		t.Error("ToolInput should not be empty")
+	}
+}
+
+func TestParseStreamLine_AssistantMultipleBlocks(t *testing.T) {
+	line := []byte(`{
+		"type": "assistant",
+		"message": {
+			"id": "msg_003",
+			"role": "assistant",
+			"content": [
+				{"type": "text", "text": "Planning"},
+				{"type": "tool_use", "id": "tu_001", "name": "Bash", "input": {"command": "pwd"}},
+				{"type": "text", "text": "Done"}
+			],
+			"usage": {"input_tokens": 20, "output_tokens": 10, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 0}
+		},
+		"session_id": "abc-123"
+	}`)
+
+	events, err := ParseStreamLine(line)
+	if err != nil {
+		t.Fatalf("ParseStreamLine failed: %v", err)
+	}
+	if len(events) != 3 {
+		t.Fatalf("Expected 3 events, got %d", len(events))
+	}
+	if events[0].Type != SEventAgentMessage || events[0].Text != "Planning" {
+		t.Fatalf("Unexpected first event: %+v", events[0])
+	}
+	if events[1].Type != SEventToolCall || events[1].ToolName != "Bash" {
+		t.Fatalf("Unexpected second event: %+v", events[1])
+	}
+	if events[2].Type != SEventAgentMessage || events[2].Text != "Done" {
+		t.Fatalf("Unexpected third event: %+v", events[2])
 	}
 }
 
@@ -106,10 +156,14 @@ func TestParseStreamLine_ResultSuccess(t *testing.T) {
 		"usage": {"input_tokens": 1000, "output_tokens": 500, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 0}
 	}`)
 
-	ev, err := ParseStreamLine(line)
+	events, err := ParseStreamLine(line)
 	if err != nil {
 		t.Fatalf("ParseStreamLine failed: %v", err)
 	}
+	if len(events) != 1 {
+		t.Fatalf("Expected 1 event, got %d", len(events))
+	}
+	ev := events[0]
 
 	if ev.Type != SEventResult {
 		t.Errorf("Type: got %s, want %s", ev.Type, SEventResult)
@@ -147,10 +201,14 @@ func TestParseStreamLine_ResultError(t *testing.T) {
 		"usage": {"input_tokens": 50, "output_tokens": 0, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 0}
 	}`)
 
-	ev, err := ParseStreamLine(line)
+	events, err := ParseStreamLine(line)
 	if err != nil {
 		t.Fatalf("ParseStreamLine failed: %v", err)
 	}
+	if len(events) != 1 {
+		t.Fatalf("Expected 1 event, got %d", len(events))
+	}
+	ev := events[0]
 
 	if ev.Type != SEventError {
 		t.Errorf("Type: got %s, want %s", ev.Type, SEventError)
@@ -171,10 +229,14 @@ func TestParseStreamLine_InvalidJSON(t *testing.T) {
 func TestParseStreamLine_UnknownType(t *testing.T) {
 	line := []byte(`{"type":"rate_limit_event","session_id":"abc-123"}`)
 
-	ev, err := ParseStreamLine(line)
+	events, err := ParseStreamLine(line)
 	if err != nil {
 		t.Fatalf("ParseStreamLine failed: %v", err)
 	}
+	if len(events) != 1 {
+		t.Fatalf("Expected 1 event, got %d", len(events))
+	}
+	ev := events[0]
 	if ev.Type != SEventSystem {
 		t.Errorf("Unknown type should be SEventSystem, got %s", ev.Type)
 	}

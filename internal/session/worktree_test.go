@@ -60,7 +60,7 @@ func TestWorktreeManager_CreateAndRemove(t *testing.T) {
 		t.Errorf("Branch: got %s, want agentforge/task-1/F001", info.Branch)
 	}
 
-	expectedPath := filepath.Join(repoDir, ".worktrees", "F001")
+	expectedPath := filepath.Join(repoDir, ".worktrees", "task-1", "F001")
 	if info.Path != expectedPath {
 		t.Errorf("Path: got %s, want %s", info.Path, expectedPath)
 	}
@@ -76,7 +76,7 @@ func TestWorktreeManager_CreateAndRemove(t *testing.T) {
 	}
 
 	// 移除 worktree
-	if err := wm.Remove("F001"); err != nil {
+	if err := wm.Remove("task-1", "F001"); err != nil {
 		t.Fatalf("Remove failed: %v", err)
 	}
 
@@ -112,8 +112,29 @@ func TestWorktreeManager_CreateMultiple(t *testing.T) {
 	}
 
 	// 清理
-	wm.Remove("F001")
-	wm.Remove("F002")
+	wm.Remove("task-1", "F001")
+	wm.Remove("task-1", "F002")
+}
+
+func TestWorktreeManager_TaskScopedPathsAvoidCollisions(t *testing.T) {
+	repoDir := initTestRepo(t)
+	wm := NewWorktreeManager(repoDir)
+
+	info1, err := wm.Create("task-1", "F001")
+	if err != nil {
+		t.Fatalf("Create task-1/F001 failed: %v", err)
+	}
+	defer wm.Remove("task-1", "F001")
+
+	info2, err := wm.Create("task-2", "F001")
+	if err != nil {
+		t.Fatalf("Create task-2/F001 failed: %v", err)
+	}
+	defer wm.Remove("task-2", "F001")
+
+	if info1.Path == info2.Path {
+		t.Fatalf("Expected task-scoped worktree paths, got identical path %s", info1.Path)
+	}
 }
 
 func TestWorktreeManager_List(t *testing.T) {
@@ -123,8 +144,8 @@ func TestWorktreeManager_List(t *testing.T) {
 	// 创建两个 worktrees
 	wm.Create("task-1", "F001")
 	wm.Create("task-1", "F002")
-	defer wm.Remove("F001")
-	defer wm.Remove("F002")
+	defer wm.Remove("task-1", "F001")
+	defer wm.Remove("task-1", "F002")
 
 	// 列出
 	wts, err := wm.List()
@@ -183,7 +204,7 @@ func TestWorktreeManager_RemoveNonExistent(t *testing.T) {
 	wm := NewWorktreeManager(repoDir)
 
 	// 移除不存在的 worktree 不应该报错（已经不存在）
-	err := wm.Remove("nonexistent")
+	err := wm.Remove("task-1", "nonexistent")
 	// 可能报错也可能不报错，取决于 git 版本
 	_ = err
 }
@@ -196,7 +217,7 @@ func TestWorktreeManager_DuplicateCreate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("First Create failed: %v", err)
 	}
-	defer wm.Remove("F001")
+	defer wm.Remove("task-1", "F001")
 
 	// 重复创建应该失败
 	_, err = wm.Create("task-1", "F001")
@@ -211,11 +232,11 @@ func TestParseWorktreeList(t *testing.T) {
 HEAD abc123
 branch refs/heads/main
 
-worktree /test/repo/.worktrees/F001
+worktree /test/repo/.worktrees/task-1/F001
 HEAD def456
 branch refs/heads/agentforge/task-1/F001
 
-worktree /test/repo/.worktrees/F002
+worktree /test/repo/.worktrees/task-2/F002
 HEAD ghi789
 branch refs/heads/agentforge/task-1/F002
 

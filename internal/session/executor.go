@@ -184,7 +184,7 @@ func (e *Executor) Start(sess *Session, prompt string, handler EventHandler) err
 				continue
 			}
 
-			event, err := ParseStreamLine(line)
+			events, err := ParseStreamLine(line)
 			if err != nil {
 				// 解析失败也转发为系统事件
 				if handler != nil {
@@ -198,15 +198,17 @@ func (e *Executor) Start(sess *Session, prompt string, handler EventHandler) err
 				continue
 			}
 
-			event.RawJSON = string(line)
-			if handler != nil {
-				handler(event)
-			}
+			for _, event := range events {
+				event.RawJSON = string(line)
+				if handler != nil {
+					handler(event)
+				}
 
-			// 如果收到 result 事件，提取 token 信息到 session
-			if event.Type == SEventResult || event.Type == SEventError {
-				sess.Result.TokensInput += event.InputTokens
-				sess.Result.TokensOutput += event.OutputTokens
+				// 如果收到 result 事件，提取 token 信息到 session
+				if event.Type == SEventResult || event.Type == SEventError {
+					sess.Result.TokensInput += event.InputTokens
+					sess.Result.TokensOutput += event.OutputTokens
+				}
 			}
 		}
 

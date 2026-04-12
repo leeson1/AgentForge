@@ -13,6 +13,7 @@ import (
 	"github.com/leeson1/agent-forge/internal/session"
 	"github.com/leeson1/agent-forge/internal/store"
 	"github.com/leeson1/agent-forge/internal/stream"
+	"github.com/leeson1/agent-forge/internal/template"
 )
 
 // Server HTTP 服务器
@@ -25,6 +26,7 @@ type Server struct {
 	logStore     *store.LogStore
 	executor     *session.Executor
 	pipeline     *Pipeline
+	templateRegistry *template.Registry
 }
 
 // NewServer 创建 HTTP 服务器
@@ -34,6 +36,7 @@ func NewServer(
 	sessionStore *store.SessionStore,
 	logStore *store.LogStore,
 	executor *session.Executor,
+	templateRegistry *template.Registry,
 ) *Server {
 	hub := NewWSHub(eventBus)
 	go hub.Run()
@@ -45,8 +48,9 @@ func NewServer(
 		sessionStore: sessionStore,
 		logStore:     logStore,
 		executor:     executor,
+		templateRegistry: templateRegistry,
 	}
-	s.pipeline = NewPipeline(executor, taskStore, sessionStore, logStore, eventBus)
+	s.pipeline = NewPipeline(executor, taskStore, sessionStore, logStore, eventBus, templateRegistry)
 	s.router = s.setupRouter()
 	return s
 }
@@ -113,6 +117,9 @@ func (s *Server) setupRouter() chi.Router {
 
 		// WebSocket
 		r.Get("/ws", s.hub.ServeWS)
+
+		// Templates
+		r.Get("/templates", s.ListTemplates)
 
 		// 健康检查
 		r.Get("/health", s.HealthCheck)

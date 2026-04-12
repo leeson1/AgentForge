@@ -225,7 +225,7 @@ func (r *Resolver) buildPrompt(config ResolveConfig) string {
 
 // ThreeLevelResolve 三级冲突解决流程
 // Level 1: 自动合并 → Level 2: Resolver Agent → Level 3: 人工介入
-func (r *Resolver) ThreeLevelResolve(t *task.Task, featureID, branch string, conflictFiles []string) *ResolveResult {
+func (r *Resolver) ThreeLevelResolve(t *task.Task, featureID, branch string, conflictFiles []string, validatorCommand string) *ResolveResult {
 	// Level 1: 自动解决
 	r.merger.AbortMerge() // 确保干净状态
 	autoResult := r.merger.AutoResolveConflict(branch, featureID)
@@ -243,12 +243,13 @@ func (r *Resolver) ThreeLevelResolve(t *task.Task, featureID, branch string, con
 	feature := task.Feature{ID: featureID}
 
 	resolveResult := r.Resolve(ResolveConfig{
-		TaskID:        t.ID,
-		TaskName:      t.Name,
-		Feature:       feature,
-		Branch:        branch,
-		ConflictFiles: detail.ConflictFiles,
-		ConflictDiffs: detail.FileDiffs,
+		TaskID:           t.ID,
+		TaskName:         t.Name,
+		Feature:          feature,
+		Branch:           branch,
+		ConflictFiles:    detail.ConflictFiles,
+		ConflictDiffs:    detail.FileDiffs,
+		ValidatorCommand: validatorCommand,
 	})
 
 	if resolveResult.Success {

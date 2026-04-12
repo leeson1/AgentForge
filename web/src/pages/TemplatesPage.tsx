@@ -1,94 +1,24 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
-  Layout, Globe, Smartphone, Server,
+  Layout, Globe, Database, Terminal,
   ChevronRight, ChevronDown, FileText,
 } from 'lucide-react';
+import { api, type TemplateInfo } from '../lib/api';
 
-interface TemplateInfo {
-  id: string;
-  name: string;
-  description: string;
-  icon: React.ComponentType<{ className?: string }>;
-  category: string;
-  features: string[];
-  promptPreview: string;
-}
-
-const BUILTIN_TEMPLATES: TemplateInfo[] = [
-  {
-    id: 'default',
-    name: 'Default',
-    description: 'General-purpose template for any project type. Includes basic scaffolding and common development patterns.',
-    icon: Layout,
-    category: 'General',
-    features: [
-      'Auto-detect project structure',
-      'Standard feature decomposition',
-      'Basic test generation',
-      'Git workflow integration',
-    ],
-    promptPreview: `You are an expert software developer. Analyze the project and decompose it into features.
-Each feature should be independently implementable and testable.
-Output a feature_list.json with feature definitions, dependencies, and implementation steps.`,
-  },
-  {
-    id: 'web-app',
-    name: 'Web App',
-    description: 'Optimized for React/Vue/Angular web applications with component-based architecture.',
-    icon: Globe,
-    category: 'Frontend',
-    features: [
-      'Component-based feature decomposition',
-      'Route-aware planning',
-      'State management patterns',
-      'API integration scaffolding',
-      'Responsive design considerations',
-    ],
-    promptPreview: `You are an expert web developer specializing in modern frontend frameworks.
-Analyze the web application and decompose it into UI components and features.
-Consider: routing, state management, API calls, responsive design, accessibility.
-Each feature maps to a component or page with its dependencies clearly defined.`,
-  },
-  {
-    id: 'mobile-app',
-    name: 'Mobile App',
-    description: 'For React Native or Flutter mobile applications with cross-platform considerations.',
-    icon: Smartphone,
-    category: 'Mobile',
-    features: [
-      'Screen-based decomposition',
-      'Navigation flow awareness',
-      'Platform-specific considerations',
-      'Offline-first patterns',
-      'Native module integration',
-    ],
-    promptPreview: `You are an expert mobile developer specializing in cross-platform frameworks.
-Analyze the mobile application and decompose it into screens and shared components.
-Consider: navigation flows, platform differences, offline support, native APIs.
-Each feature maps to a screen or shared module with clear dependency chains.`,
-  },
-  {
-    id: 'api',
-    name: 'API Server',
-    description: 'For REST/GraphQL backend services with database integration and middleware patterns.',
-    icon: Server,
-    category: 'Backend',
-    features: [
-      'Endpoint-based decomposition',
-      'Database schema planning',
-      'Middleware chain awareness',
-      'Authentication/authorization patterns',
-      'API documentation generation',
-    ],
-    promptPreview: `You are an expert backend developer specializing in API design and implementation.
-Analyze the API server and decompose it into endpoints, middleware, and data models.
-Consider: RESTful design, database relationships, auth flows, error handling, validation.
-Each feature maps to an API endpoint or shared service with defined data contracts.`,
-  },
-];
+const CATEGORY_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
+  general: Layout,
+  web: Globe,
+  cli: Terminal,
+  data: Database,
+};
 
 export function TemplatesPage() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [templates, setTemplates] = useState<TemplateInfo[]>([]);
+
+  useEffect(() => {
+    api.listTemplates().then(setTemplates).catch(() => setTemplates([]));
+  }, []);
 
   const toggleExpand = (id: string) => {
     setExpandedId(expandedId === id ? null : id);
@@ -99,13 +29,13 @@ export function TemplatesPage() {
       <div>
         <h1 className="text-2xl font-bold text-gray-800">Templates</h1>
         <p className="text-sm text-gray-500 mt-1">
-          Built-in templates for different project types. Custom templates can be added to ~/.agent-forge/templates/
+          Registered templates from the backend runtime. Custom templates can be added to ~/.agent-forge/templates/
         </p>
       </div>
 
       <div className="space-y-3">
-        {BUILTIN_TEMPLATES.map((template) => {
-          const Icon = template.icon;
+        {templates.map((template) => {
+          const Icon = CATEGORY_ICONS[template.category] || Layout;
           const isExpanded = expandedId === template.id;
 
           return (
@@ -113,7 +43,6 @@ export function TemplatesPage() {
               key={template.id}
               className="bg-white rounded-xl border border-gray-200 overflow-hidden"
             >
-              {/* 卡片头 */}
               <button
                 onClick={() => toggleExpand(template.id)}
                 className="w-full text-left p-4 hover:bg-gray-50 transition"
@@ -131,16 +60,6 @@ export function TemplatesPage() {
                       <code className="text-xs text-gray-400 font-mono ml-auto">{template.id}</code>
                     </div>
                     <p className="text-sm text-gray-600 mt-1">{template.description}</p>
-                    <div className="flex flex-wrap gap-1.5 mt-2">
-                      {template.features.map((feat) => (
-                        <span
-                          key={feat}
-                          className="text-xs bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full"
-                        >
-                          {feat}
-                        </span>
-                      ))}
-                    </div>
                   </div>
                   <div className="shrink-0 mt-1">
                     {isExpanded ? (
@@ -152,16 +71,18 @@ export function TemplatesPage() {
                 </div>
               </button>
 
-              {/* 展开详情 */}
               {isExpanded && (
                 <div className="border-t border-gray-200 p-4 bg-gray-50">
                   <div className="flex items-center gap-2 mb-2">
                     <FileText className="w-4 h-4 text-gray-500" />
-                    <span className="text-sm font-medium text-gray-700">Prompt Preview</span>
+                    <span className="text-sm font-medium text-gray-700">Template Details</span>
                   </div>
-                  <pre className="p-3 bg-gray-900 text-gray-200 rounded-lg text-xs font-mono overflow-x-auto whitespace-pre-wrap leading-relaxed">
-                    {template.promptPreview}
-                  </pre>
+                  <div className="p-3 bg-gray-900 text-gray-200 rounded-lg text-xs font-mono whitespace-pre-wrap leading-relaxed">
+                    {`id: ${template.id}
+name: ${template.name}
+category: ${template.category}
+description: ${template.description}`}
+                  </div>
                 </div>
               )}
             </div>

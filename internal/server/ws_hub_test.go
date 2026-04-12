@@ -142,6 +142,34 @@ func TestWSHub_MultipleClients(t *testing.T) {
 	}
 }
 
+func TestWSHub_ReceiveMultipleEventsAsSeparateFrames(t *testing.T) {
+	hub, eb := setupTestHub(t)
+
+	server := httptest.NewServer(http.HandlerFunc(hub.ServeWS))
+	defer server.Close()
+
+	conn := connectWS(t, server, "")
+	defer conn.Close()
+
+	time.Sleep(100 * time.Millisecond)
+
+	eb.Publish(stream.NewEvent(stream.EventTaskStatus, "task-1", map[string]string{"status": "running"}))
+	eb.Publish(stream.NewEvent(stream.EventLog, "task-1", map[string]string{"content": "hello"}))
+
+	conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	for i := 0; i < 2; i++ {
+		_, message, err := conn.ReadMessage()
+		if err != nil {
+			t.Fatalf("ReadMessage %d failed: %v", i, err)
+		}
+
+		var received stream.Event
+		if err := json.Unmarshal(message, &received); err != nil {
+			t.Fatalf("message %d should be standalone JSON, got %q: %v", i, string(message), err)
+		}
+	}
+}
+
 func TestWSHub_Disconnect(t *testing.T) {
 	hub, _ := setupTestHub(t)
 

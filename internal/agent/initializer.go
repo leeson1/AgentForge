@@ -41,6 +41,7 @@ func NewInitializer(executor *session.Executor, taskStore *store.TaskStore, sess
 type InitResult struct {
 	Session     *session.Session  `json:"session"`
 	FeatureList *task.FeatureList `json:"feature_list,omitempty"`
+	ProgressContent string        `json:"progress_content,omitempty"`
 	Error       string            `json:"error,omitempty"`
 }
 
@@ -50,7 +51,7 @@ type InitResult struct {
 // 3. 等待完成
 // 4. 验证产出物（feature_list.json, init.sh, progress.txt）
 // 5. 保存结果，状态转换：initializing → planning
-func (init *Initializer) Run(t *task.Task) (*InitResult, error) {
+func (init *Initializer) Run(t *task.Task, tmpl *template.Template) (*InitResult, error) {
 	// 1. 状态转换：pending → initializing
 	if err := t.TransitionTo(task.StatusInitializing); err != nil {
 		return nil, fmt.Errorf("failed to transition task to initializing: %w", err)
@@ -60,7 +61,7 @@ func (init *Initializer) Run(t *task.Task) (*InitResult, error) {
 	}
 
 	// 2. 构建 prompt
-	prompt := init.buildPrompt(t)
+	prompt := init.buildPrompt(t, tmpl)
 
 	// 3. 保存 prompt 到文件（供调试和审计）
 	init.savePrompt(t.ID, prompt)
@@ -120,7 +121,7 @@ func (init *Initializer) Run(t *task.Task) (*InitResult, error) {
 	}
 
 	// 9. 验证产出物
-	featureList, err := init.validateOutputs(t.Config.WorkspaceDir)
+	featureList, progressContent, err := init.validateOutputs(t.Config.WorkspaceDir)
 	if err != nil {
 		result := &InitResult{
 			Session: sess,
@@ -134,6 +135,9 @@ func (init *Initializer) Run(t *task.Task) (*InitResult, error) {
 	// 10. 保存 feature_list 到 store
 	if err := init.taskStore.SaveFeatureList(t.ID, featureList); err != nil {
 		return nil, fmt.Errorf("failed to save feature list: %w", err)
+	}
+	if err := init.taskStore.SaveProgress(t.ID, progressContent); err != nil {
+		return nil, fmt.Errorf("failed to save progress: %w", err)
 	}
 
 	// 11. 更新任务进度
@@ -151,16 +155,21 @@ func (init *Initializer) Run(t *task.Task) (*InitResult, error) {
 	return &InitResult{
 		Session:     sess,
 		FeatureList: featureList,
+		ProgressContent: progressContent,
 	}, nil
 }
 
 // buildPrompt 构建 Initializer Agent 的 prompt
-func (init *Initializer) buildPrompt(t *task.Task) string {
+func (init *Initializer) buildPrompt(t *task.Task, tmpl *template.Template) string {
 	vars := map[string]string{
 		"task_name":        t.Name,
 		"task_description": t.Description,
 	}
-	return template.RenderPrompt(template.DefaultInitializerPrompt, vars)
+	promptTemplate := template.DefaultInitializerPrompt
+	if tmpl != nil && tmpl.InitializerPrompt != "" {
+		promptTemplate = tmpl.InitializerPrompt
+	}
+	return template.RenderPrompt(promptTemplate, vars)
 }
 
 // savePrompt 保存 prompt 到文件
@@ -172,21 +181,22 @@ func (init *Initializer) savePrompt(taskID, prompt string) {
 }
 
 // validateOutputs 验证 Initializer 产出物
-func (init *Initializer) validateOutputs(workDir string) (*task.FeatureList, error) {
+func (init *Initializer) validateOutputs(workDir string) (*task.FeatureList, string, error) {
 	featureList, err := init.validateFeatureList(workDir)
 	if err != nil {
-		return nil, fmt.Errorf("feature_list.json validation failed: %w", err)
+		return nil, "", fmt.Errorf("feature_list.json validation failed: %w", err)
 	}
 
 	if err := init.validateInitScript(workDir); err != nil {
-		return nil, fmt.Errorf("init.sh validation failed: %w", err)
+		return nil, "", fmt.Errorf("init.sh validation failed: %w", err)
 	}
 
-	if err := init.validateProgressFile(workDir); err != nil {
-		return nil, fmt.Errorf("progress.txt validation failed: %w", err)
+	progressContent, err := init.validateProgressFile(workDir)
+	if err != nil {
+		return nil, "", fmt.Errorf("progress.txt validation failed: %w", err)
 	}
 
-	return featureList, nil
+	return featureList, progressContent, nil
 }
 
 // validateFeatureList 验证 feature_list.json
@@ -237,20 +247,25 @@ func (init *Initializer) validateInitScript(workDir string) error {
 }
 
 // validateProgressFile 验证 progress.txt 存在且非空
-func (init *Initializer) validateProgressFile(workDir string) error {
+func (init *Initializer) validateProgressFile(workDir string) (string, error) {
 	path := filepath.Join(workDir, "progress.txt")
 
 	info, err := os.Stat(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return fmt.Errorf("progress.txt not found in workspace")
+			return "", fmt.Errorf("progress.txt not found in workspace")
 		}
-		return fmt.Errorf("failed to stat progress.txt: %w", err)
+		return "", fmt.Errorf("failed to stat progress.txt: %w", err)
 	}
 
 	if info.Size() == 0 {
-		return fmt.Errorf("progress.txt is empty")
+		return "", fmt.Errorf("progress.txt is empty")
 	}
 
-	return nil
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("failed to read progress.txt: %w", err)
+	}
+
+	return string(data), nil
 }

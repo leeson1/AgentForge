@@ -45,14 +45,23 @@ type WorkerConfig struct {
 	ProgressContent  string // 当前 progress.txt 内容
 	PendingFeatures  string // 待完成 features 摘要
 	ValidatorCommand string // 验证命令
+	Template         *template.Template
+	Branch           string
+	BaseCommit       string
 }
 
 // WorkerResult Worker 执行结果
 type WorkerResult struct {
-	Session   *session.Session `json:"session"`
-	FeatureID string           `json:"feature_id"`
-	Success   bool             `json:"success"`
-	Error     string           `json:"error,omitempty"`
+	Session          *session.Session `json:"session"`
+	FeatureID        string           `json:"feature_id"`
+	Branch           string           `json:"branch,omitempty"`
+	WorkDir          string           `json:"work_dir,omitempty"`
+	BaseCommit       string           `json:"base_commit,omitempty"`
+	HeadCommit       string           `json:"head_commit,omitempty"`
+	ChangedFiles     []string         `json:"changed_files,omitempty"`
+	ValidationOutput string           `json:"validation_output,omitempty"`
+	Success          bool             `json:"success"`
+	Error            string           `json:"error,omitempty"`
 }
 
 // Run 执行 Worker 流程
@@ -74,7 +83,44 @@ func (w *Worker) Run(config WorkerConfig) *WorkerResult {
 		return &WorkerResult{
 			Session:   sess,
 			FeatureID: config.Feature.ID,
+			Branch:    config.Branch,
+			WorkDir:   config.WorkDir,
+			BaseCommit: config.BaseCommit,
 			Error:     fmt.Sprintf("failed to save session: %v", err),
+		}
+	}
+
+	hookEnv := template.HookEnv{
+		TaskID:       config.TaskID,
+		SessionID:    sessionID,
+		WorkspaceDir: config.WorkDir,
+		FeatureID:    config.Feature.ID,
+		BatchNum:     config.BatchNum,
+	}
+	if config.Template != nil {
+		hookEnv.Extra = config.Template.Config.Variables
+	}
+	if config.Template != nil {
+		hookResult := template.RunSessionStartHook(config.Template, hookEnv)
+		if !hookResult.Success {
+			errMsg := fmt.Sprintf("session start hook failed: %v", hookResult.Error)
+			sess.Fail(errMsg)
+			_ = w.sessionStore.Save(sess)
+			if hookResult.Output != "" {
+				_ = w.logStore.Append(config.TaskID, sessionID, "[hook:start] "+hookResult.Output+"\n")
+			}
+			return &WorkerResult{
+				Session:          sess,
+				FeatureID:        config.Feature.ID,
+				Branch:           config.Branch,
+				WorkDir:          config.WorkDir,
+				BaseCommit:       config.BaseCommit,
+				ValidationOutput: hookResult.Output,
+				Error:            errMsg,
+			}
+		}
+		if hookResult.Output != "" {
+			_ = w.logStore.Append(config.TaskID, sessionID, "[hook:start] "+hookResult.Output+"\n")
 		}
 	}
 
@@ -104,6 +150,9 @@ func (w *Worker) Run(config WorkerConfig) *WorkerResult {
 		return &WorkerResult{
 			Session:   sess,
 			FeatureID: config.Feature.ID,
+			Branch:    config.Branch,
+			WorkDir:   config.WorkDir,
+			BaseCommit: config.BaseCommit,
 			Error:     fmt.Sprintf("failed to start worker session: %v", err),
 		}
 	}
@@ -114,19 +163,169 @@ func (w *Worker) Run(config WorkerConfig) *WorkerResult {
 	// 6. 保存 session 最终状态
 	_ = w.sessionStore.Save(sess)
 
-	// 7. 判断结果
+	// 7. 判断 Claude 进程结果
 	if sess.Status == session.SessionFailed || sess.Status == session.SessionTimeout {
 		return &WorkerResult{
 			Session:   sess,
 			FeatureID: config.Feature.ID,
+			Branch:    config.Branch,
+			WorkDir:   config.WorkDir,
+			BaseCommit: config.BaseCommit,
 			Error:     sess.Result.ErrorMessage,
 		}
 	}
 
+	if config.Template != nil {
+		hookResult := template.RunSessionEndHook(config.Template, hookEnv)
+		if !hookResult.Success {
+			errMsg := fmt.Sprintf("session end hook failed: %v", hookResult.Error)
+			sess.Fail(errMsg)
+			_ = w.sessionStore.Save(sess)
+			if hookResult.Output != "" {
+				_ = w.logStore.Append(config.TaskID, sessionID, "[hook:end] "+hookResult.Output+"\n")
+			}
+			return &WorkerResult{
+				Session:          sess,
+				FeatureID:        config.Feature.ID,
+				Branch:           config.Branch,
+				WorkDir:          config.WorkDir,
+				BaseCommit:       config.BaseCommit,
+				ValidationOutput: hookResult.Output,
+				Error:            errMsg,
+			}
+		}
+		if hookResult.Output != "" {
+			_ = w.logStore.Append(config.TaskID, sessionID, "[hook:end] "+hookResult.Output+"\n")
+		}
+	}
+
+	headAdvanced, headCommit, err := session.HasCommitAdvanced(config.WorkDir, config.BaseCommit)
+	if err != nil {
+		errMsg := fmt.Sprintf("failed to validate git history: %v", err)
+		sess.Fail(errMsg)
+		_ = w.sessionStore.Save(sess)
+		return &WorkerResult{
+			Session:    sess,
+			FeatureID:  config.Feature.ID,
+			Branch:     config.Branch,
+			WorkDir:    config.WorkDir,
+			BaseCommit: config.BaseCommit,
+			Error:      errMsg,
+		}
+	}
+	if !headAdvanced {
+		errMsg := "worker completed without creating a commit"
+		sess.Fail(errMsg)
+		_ = w.sessionStore.Save(sess)
+		return &WorkerResult{
+			Session:    sess,
+			FeatureID:  config.Feature.ID,
+			Branch:     config.Branch,
+			WorkDir:    config.WorkDir,
+			BaseCommit: config.BaseCommit,
+			HeadCommit: headCommit,
+			Error:      errMsg,
+		}
+	}
+
+	clean, err := session.IsWorktreeClean(config.WorkDir)
+	if err != nil {
+		errMsg := fmt.Sprintf("failed to inspect worktree state: %v", err)
+		sess.Fail(errMsg)
+		_ = w.sessionStore.Save(sess)
+		return &WorkerResult{
+			Session:    sess,
+			FeatureID:  config.Feature.ID,
+			Branch:     config.Branch,
+			WorkDir:    config.WorkDir,
+			BaseCommit: config.BaseCommit,
+			HeadCommit: headCommit,
+			Error:      errMsg,
+		}
+	}
+	if !clean {
+		errMsg := "worker left the worktree dirty"
+		sess.Fail(errMsg)
+		_ = w.sessionStore.Save(sess)
+		return &WorkerResult{
+			Session:    sess,
+			FeatureID:  config.Feature.ID,
+			Branch:     config.Branch,
+			WorkDir:    config.WorkDir,
+			BaseCommit: config.BaseCommit,
+			HeadCommit: headCommit,
+			Error:      errMsg,
+		}
+	}
+
+	changedFiles, err := session.ChangedFilesSince(config.WorkDir, config.BaseCommit)
+	if err != nil {
+		errMsg := fmt.Sprintf("failed to inspect changed files: %v", err)
+		sess.Fail(errMsg)
+		_ = w.sessionStore.Save(sess)
+		return &WorkerResult{
+			Session:    sess,
+			FeatureID:  config.Feature.ID,
+			Branch:     config.Branch,
+			WorkDir:    config.WorkDir,
+			BaseCommit: config.BaseCommit,
+			HeadCommit: headCommit,
+			Error:      errMsg,
+		}
+	}
+	for _, path := range changedFiles {
+		if path == "feature_list.json" || path == "progress.txt" {
+			errMsg := fmt.Sprintf("worker modified coordinator-owned file: %s", path)
+			sess.Fail(errMsg)
+			_ = w.sessionStore.Save(sess)
+			return &WorkerResult{
+				Session:      sess,
+				FeatureID:    config.Feature.ID,
+				Branch:       config.Branch,
+				WorkDir:      config.WorkDir,
+				BaseCommit:   config.BaseCommit,
+				HeadCommit:   headCommit,
+				ChangedFiles: changedFiles,
+				Error:        errMsg,
+			}
+		}
+	}
+
+	var validationOutput string
+	if config.Template != nil {
+		validatorResult := template.RunValidator(config.Template, hookEnv)
+		validationOutput = validatorResult.Output
+		if validationOutput != "" {
+			_ = w.logStore.Append(config.TaskID, sessionID, "[validator] "+validationOutput+"\n")
+		}
+		if !validatorResult.Success {
+			errMsg := fmt.Sprintf("validator failed: %v", validatorResult.Error)
+			sess.Fail(errMsg)
+			_ = w.sessionStore.Save(sess)
+			return &WorkerResult{
+				Session:          sess,
+				FeatureID:        config.Feature.ID,
+				Branch:           config.Branch,
+				WorkDir:          config.WorkDir,
+				BaseCommit:       config.BaseCommit,
+				HeadCommit:       headCommit,
+				ChangedFiles:     changedFiles,
+				ValidationOutput: validationOutput,
+				Error:            errMsg,
+			}
+		}
+	}
+
 	return &WorkerResult{
-		Session:   sess,
-		FeatureID: config.Feature.ID,
-		Success:   true,
+		Session:          sess,
+		FeatureID:        config.Feature.ID,
+		Branch:           config.Branch,
+		WorkDir:          config.WorkDir,
+		BaseCommit:       config.BaseCommit,
+		HeadCommit:       headCommit,
+		ChangedFiles:     changedFiles,
+		ValidationOutput: validationOutput,
+		Success:          true,
 	}
 }
 
@@ -152,12 +351,17 @@ func (w *Worker) buildPrompt(config WorkerConfig) string {
 		"task_name":           config.TaskName,
 		"session_number":      fmt.Sprintf("%d", config.SessionNumber),
 		"feature_id":          config.Feature.ID,
+		"feature_category":    config.Feature.Category,
 		"feature_description": description,
 		"progress_content":    config.ProgressContent,
 		"pending_features":    config.PendingFeatures,
 		"validator_command":   validatorCmd,
 	}
-	return template.RenderPrompt(template.DefaultWorkerPrompt, vars)
+	promptTemplate := template.DefaultWorkerPrompt
+	if config.Template != nil && config.Template.WorkerPrompt != "" {
+		promptTemplate = config.Template.WorkerPrompt
+	}
+	return template.RenderPrompt(promptTemplate, vars)
 }
 
 // savePrompt 保存 prompt 到文件
