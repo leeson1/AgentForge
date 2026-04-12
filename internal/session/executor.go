@@ -289,6 +289,7 @@ func (e *Executor) buildArgs(sess *Session) []string {
 		"--print",
 		"--output-format", "stream-json",
 		"--verbose",
+		"--dangerously-skip-permissions",
 	}
 
 	if e.config.MaxTurns > 0 {
