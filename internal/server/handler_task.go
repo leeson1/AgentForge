@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/leeson1/agent-forge/internal/stream"
 	"github.com/leeson1/agent-forge/internal/task"
 )
 
@@ -301,6 +302,49 @@ func (s *Server) GetEvents(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, events)
+}
+
+// --- Intervention Handler ---
+
+// InterventionRequest 干预请求
+type InterventionRequest struct {
+	Content      string `json:"content"`
+	TargetWorker string `json:"target_worker,omitempty"`
+}
+
+// Intervene 发送人工干预消息
+func (s *Server) Intervene(w http.ResponseWriter, r *http.Request) {
+	taskID := chi.URLParam(r, "taskID")
+
+	// 验证任务存在
+	if _, err := s.taskStore.Get(taskID); err != nil {
+		writeError(w, http.StatusNotFound, fmt.Sprintf("task not found: %s", taskID))
+		return
+	}
+
+	var req InterventionRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if req.Content == "" {
+		writeError(w, http.StatusBadRequest, "content is required")
+		return
+	}
+
+	// 发布干预事件到 EventBus，广播给所有订阅者
+	event := stream.NewEvent(stream.EventIntervention, taskID, map[string]string{
+		"content":       req.Content,
+		"target_worker": req.TargetWorker,
+		"sender":        "human",
+	})
+	s.eventBus.Publish(event)
+
+	writeJSON(w, http.StatusOK, map[string]string{
+		"message": "intervention sent",
+		"task_id": taskID,
+	})
 }
 
 // --- 辅助函数 ---

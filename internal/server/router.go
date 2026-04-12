@@ -99,6 +99,9 @@ func (s *Server) setupRouter() chi.Router {
 
 				// Events
 				r.Get("/events", s.GetEvents)
+
+				// Intervention（人工干预）
+				r.Post("/intervene", s.Intervene)
 			})
 		})
 

@@ -19,6 +19,7 @@ const (
 	EventMergeConflict  EventType = "merge_conflict"
 	EventBatchUpdate    EventType = "batch_update"
 	EventAlert          EventType = "alert"
+	EventIntervention   EventType = "intervention"
 	EventLog            EventType = "log"
 )
 
