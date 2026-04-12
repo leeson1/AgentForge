@@ -16,11 +16,15 @@ import (
 
 // Initializer Initializer Agent 流程控制器
 // 负责启动 Initializer 会话，监控执行，验证产出物
+// SessionEventCallback 实时事件回调（用于广播到 EventBus 等）
+type SessionEventCallback func(sessionID string, ev *session.SessionEvent)
+
 type Initializer struct {
 	executor     *session.Executor
 	taskStore    *store.TaskStore
 	sessionStore *store.SessionStore
 	logStore     *store.LogStore
+	OnEvent      SessionEventCallback // 可选：实时事件广播
 }
 
 // NewInitializer 创建 Initializer 实例
@@ -86,6 +90,11 @@ func (init *Initializer) Run(t *task.Task) (*InitResult, error) {
 		// 写入事件流
 		if ev.RawJSON != "" {
 			_ = init.logStore.AppendEvent(t.ID, ev.RawJSON)
+		}
+
+		// 广播实时事件
+		if init.OnEvent != nil {
+			init.OnEvent(sessionID, ev)
 		}
 	}
 

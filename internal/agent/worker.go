@@ -21,6 +21,7 @@ type Worker struct {
 	taskStore    *store.TaskStore
 	sessionStore *store.SessionStore
 	logStore     *store.LogStore
+	OnEvent      SessionEventCallback // 可选：实时事件广播
 }
 
 // NewWorker 创建 Worker
@@ -91,6 +92,11 @@ func (w *Worker) Run(config WorkerConfig) *WorkerResult {
 		}
 		if ev.RawJSON != "" {
 			_ = w.logStore.AppendEvent(config.TaskID, ev.RawJSON)
+		}
+
+		// 广播实时事件
+		if w.OnEvent != nil {
+			w.OnEvent(sessionID, ev)
 		}
 	}
 

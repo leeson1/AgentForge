@@ -18,6 +18,7 @@ type BatchRunner struct {
 	logStore     *store.LogStore
 	worktreeMgr  *session.WorktreeManager
 	maxParallel  int
+	OnEvent      SessionEventCallback // 可选：实时事件广播
 }
 
 // NewBatchRunner 创建 BatchRunner
@@ -110,6 +111,7 @@ func (br *BatchRunner) Run(config BatchRunConfig) *BatchRunResult {
 
 			// 运行 Worker
 			worker := NewWorker(br.executor, br.taskStore, br.sessionStore, br.logStore)
+			worker.OnEvent = br.OnEvent
 			wr := worker.Run(WorkerConfig{
 				TaskID:           config.TaskID,
 				TaskName:         config.TaskName,

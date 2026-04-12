@@ -51,6 +51,7 @@ func (p *Pipeline) Run(t *task.Task) {
 	p.broadcastSystem(taskID, "🚀 Starting Initializer Agent...")
 
 	initializer := agent.NewInitializer(p.executor, p.taskStore, p.sessionStore, p.logStore)
+	initializer.OnEvent = p.makeEventCallback(taskID)
 	initResult, err := initializer.Run(t)
 	if err != nil {
 		p.failTask(t, fmt.Sprintf("Initializer failed: %v", err))
@@ -100,6 +101,7 @@ func (p *Pipeline) Run(t *task.Task) {
 		p.executor, p.taskStore, p.sessionStore, p.logStore,
 		worktreeMgr, t.Config.MaxParallelWorkers,
 	)
+	batchRunner.OnEvent = p.makeEventCallback(taskID)
 
 	for !batchMgr.IsAllCompleted() {
 		batchNum := batchMgr.CurrentBatch()
@@ -218,6 +220,40 @@ func (p *Pipeline) failTask(t *task.Task, message string) {
 // broadcast 发布事件
 func (p *Pipeline) broadcast(taskID string, eventType stream.EventType, data interface{}) {
 	p.eventBus.Publish(stream.NewEvent(eventType, taskID, data))
+}
+
+// makeEventCallback 创建将 Agent 实时事件广播到 EventBus 的回调
+func (p *Pipeline) makeEventCallback(taskID string) agent.SessionEventCallback {
+	return func(sessionID string, ev *session.SessionEvent) {
+		switch ev.Type {
+		case session.SEventAgentMessage:
+			if ev.Text != "" {
+				event := stream.NewEvent(stream.EventAgentMessage, taskID, map[string]string{
+					"content":    ev.Text,
+					"session_id": sessionID,
+				})
+				event.SessionID = sessionID
+				p.eventBus.Publish(event)
+			}
+		case session.SEventToolCall:
+			event := stream.NewEvent(stream.EventToolCall, taskID, map[string]string{
+				"tool_name":  ev.ToolName,
+				"tool_input": ev.ToolInput,
+				"session_id": sessionID,
+			})
+			event.SessionID = sessionID
+			p.eventBus.Publish(event)
+		case session.SEventResult:
+			event := stream.NewEvent(stream.EventSessionEnd, taskID, map[string]interface{}{
+				"session_id":    sessionID,
+				"input_tokens":  ev.InputTokens,
+				"output_tokens": ev.OutputTokens,
+				"num_turns":     ev.NumTurns,
+			})
+			event.SessionID = sessionID
+			p.eventBus.Publish(event)
+		}
+	}
 }
 
 // broadcastSystem 发布系统消息到对话流
