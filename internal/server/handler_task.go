@@ -170,6 +170,9 @@ func (s *Server) DeleteTask(w http.ResponseWriter, r *http.Request) {
 func (s *Server) StartTask(w http.ResponseWriter, r *http.Request) {
 	taskID := chi.URLParam(r, "taskID")
 
+	s.taskLifecycleMu.Lock()
+	defer s.taskLifecycleMu.Unlock()
+
 	t, err := s.taskStore.Get(taskID)
 	if err != nil {
 		writeError(w, http.StatusNotFound, fmt.Sprintf("task not found: %s", taskID))
@@ -181,6 +184,21 @@ func (s *Server) StartTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Reserve the task before launching the background pipeline so duplicate
+	// start requests cannot race against the initializer status transition.
+	if err := t.TransitionTo(task.StatusInitializing); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := s.taskStore.Update(t); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	s.eventBus.Publish(stream.NewEvent(stream.EventTaskStatus, taskID, map[string]string{
+		"status": string(t.Status),
+	}))
+
 	// 立即返回响应，管线在后台执行
 	writeJSON(w, http.StatusOK, map[string]string{
 		"message": "task pipeline starting",
@@ -188,7 +206,11 @@ func (s *Server) StartTask(w http.ResponseWriter, r *http.Request) {
 	})
 
 	// 后台启动执行管线
-	go s.pipeline.Run(t)
+	runPipeline := s.runPipeline
+	if runPipeline == nil {
+		runPipeline = s.pipeline.Run
+	}
+	go runPipeline(t)
 }
 
 // StopTask 停止任务
@@ -377,4 +399,3 @@ func writeError(w http.ResponseWriter, status int, message string) {
 		Message: message,
 	})
 }
-

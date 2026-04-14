@@ -3,6 +3,7 @@ package session
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -39,10 +40,10 @@ func DefaultExecutorConfig() ExecutorConfig {
 
 // Executor Claude Code CLI 进程执行器
 type Executor struct {
-	config   ExecutorConfig
-	mu       sync.RWMutex
-	procs    map[string]*runningProcess // sessionID -> process
-	baseDir  string                     // 任务存储根目录
+	config  ExecutorConfig
+	mu      sync.RWMutex
+	procs   map[string]*runningProcess // sessionID -> process
+	baseDir string                     // 任务存储根目录
 }
 
 // runningProcess 运行中的进程信息
@@ -335,11 +336,10 @@ func (e *Executor) ReadPIDFile(taskID, sessionID string) (int, error) {
 
 // IsProcessAlive 检查进程是否还存活
 func IsProcessAlive(pid int) bool {
-	proc, err := os.FindProcess(pid)
-	if err != nil {
+	if pid <= 0 {
 		return false
 	}
-	// 发送信号 0 检查进程是否存在
-	err = proc.Signal(os.Signal(nil))
-	return err == nil
+
+	err := syscall.Kill(pid, 0)
+	return err == nil || errors.Is(err, syscall.EPERM)
 }

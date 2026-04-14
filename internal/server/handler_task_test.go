@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -270,6 +271,59 @@ func TestStartTask(t *testing.T) {
 
 	// 等后台 pipeline goroutine 结束（它会因为找不到 claude CLI 快速失败）
 	time.Sleep(500 * time.Millisecond)
+}
+
+func TestStartTask_RejectsDuplicateRequest(t *testing.T) {
+	s := setupTestServer(t)
+
+	var pipelineCalls atomic.Int32
+	started := make(chan struct{}, 1)
+	s.runPipeline = func(*task.Task) {
+		pipelineCalls.Add(1)
+		started <- struct{}{}
+	}
+
+	workDir := t.TempDir()
+	body := `{"name":"StartOnce","config":{"workspace_dir":"` + workDir + `"}}`
+	req := httptest.NewRequest("POST", "/api/tasks", bytes.NewBufferString(body))
+	w := httptest.NewRecorder()
+	s.Router().ServeHTTP(w, req)
+
+	var created task.Task
+	if err := json.NewDecoder(w.Body).Decode(&created); err != nil {
+		t.Fatalf("decode create response: %v", err)
+	}
+
+	req = httptest.NewRequest("POST", "/api/tasks/"+created.ID+"/start", nil)
+	w = httptest.NewRecorder()
+	s.Router().ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("first start status: got %d, want %d", w.Code, http.StatusOK)
+	}
+
+	req = httptest.NewRequest("POST", "/api/tasks/"+created.ID+"/start", nil)
+	w = httptest.NewRecorder()
+	s.Router().ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("second start status: got %d, want %d", w.Code, http.StatusBadRequest)
+	}
+
+	updated, err := s.taskStore.Get(created.ID)
+	if err != nil {
+		t.Fatalf("Get task failed: %v", err)
+	}
+	if updated.Status != task.StatusInitializing {
+		t.Fatalf("Expected initializing task after first start, got %s", updated.Status)
+	}
+
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("pipeline was not launched")
+	}
+	if pipelineCalls.Load() != 1 {
+		t.Fatalf("Expected pipeline to be launched once, got %d", pipelineCalls.Load())
+	}
 }
 
 func TestListTemplates(t *testing.T) {

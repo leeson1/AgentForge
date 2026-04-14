@@ -180,17 +180,29 @@ func TestScanRunningTasks(t *testing.T) {
 
 	// 找到 task-1
 	var found bool
+	var deadFound bool
 	for _, r := range results {
 		if r.TaskID == "task-1" {
 			found = true
 			if r.PID != os.Getpid() {
 				t.Errorf("Expected PID %d, got %d", os.Getpid(), r.PID)
 			}
-			// isRunning 取决于 signal(0) 实现
+			if !r.IsRunning {
+				t.Error("Expected current process to be reported as running")
+			}
+		}
+		if r.TaskID == "task-2" {
+			deadFound = true
+			if r.IsRunning {
+				t.Error("Expected invalid PID to be reported as not running")
+			}
 		}
 	}
 	if !found {
 		t.Error("task-1 not found in results")
+	}
+	if !deadFound {
+		t.Error("task-2 not found in results")
 	}
 }
 

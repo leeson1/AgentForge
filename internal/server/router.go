@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -13,19 +14,22 @@ import (
 	"github.com/leeson1/agent-forge/internal/session"
 	"github.com/leeson1/agent-forge/internal/store"
 	"github.com/leeson1/agent-forge/internal/stream"
+	"github.com/leeson1/agent-forge/internal/task"
 	"github.com/leeson1/agent-forge/internal/template"
 )
 
 // Server HTTP 服务器
 type Server struct {
-	router       chi.Router
-	hub          *WSHub
-	eventBus     *stream.EventBus
-	taskStore    *store.TaskStore
-	sessionStore *store.SessionStore
-	logStore     *store.LogStore
-	executor     *session.Executor
-	pipeline     *Pipeline
+	router           chi.Router
+	hub              *WSHub
+	eventBus         *stream.EventBus
+	taskStore        *store.TaskStore
+	sessionStore     *store.SessionStore
+	logStore         *store.LogStore
+	executor         *session.Executor
+	pipeline         *Pipeline
+	runPipeline      func(*task.Task)
+	taskLifecycleMu  sync.Mutex
 	templateRegistry *template.Registry
 }
 
@@ -42,15 +46,16 @@ func NewServer(
 	go hub.Run()
 
 	s := &Server{
-		hub:          hub,
-		eventBus:     eventBus,
-		taskStore:    taskStore,
-		sessionStore: sessionStore,
-		logStore:     logStore,
-		executor:     executor,
+		hub:              hub,
+		eventBus:         eventBus,
+		taskStore:        taskStore,
+		sessionStore:     sessionStore,
+		logStore:         logStore,
+		executor:         executor,
 		templateRegistry: templateRegistry,
 	}
 	s.pipeline = NewPipeline(executor, taskStore, sessionStore, logStore, eventBus, templateRegistry)
+	s.runPipeline = s.pipeline.Run
 	s.router = s.setupRouter()
 	return s
 }
@@ -147,9 +152,9 @@ func (s *Server) setupRouter() chi.Router {
 // findStaticDir 查找前端构建产出目录
 func findStaticDir() string {
 	candidates := []string{
-		"/app/web/dist",       // Docker 容器
-		"web/dist",            // 本地开发（项目根目录运行）
-		"../web/dist",         // 本地开发（从 cmd/ 运行）
+		"/app/web/dist", // Docker 容器
+		"web/dist",      // 本地开发（项目根目录运行）
+		"../web/dist",   // 本地开发（从 cmd/ 运行）
 	}
 	for _, dir := range candidates {
 		if info, err := os.Stat(dir); err == nil && info.IsDir() {

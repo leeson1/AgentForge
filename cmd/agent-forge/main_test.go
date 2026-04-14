@@ -5,6 +5,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/leeson1/agent-forge/internal/store"
 	"github.com/leeson1/agent-forge/internal/task"
@@ -140,5 +141,44 @@ echo '{"type":"result","subtype":"success","is_error":false,"result":"worker don
 
 	if _, err := os.Stat(filepath.Join(repoDir, "F001.txt")); err != nil {
 		t.Fatalf("Expected merged feature file in repo: %v", err)
+	}
+}
+
+func TestStopCommandDoesNotRewriteCompletedTask(t *testing.T) {
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+	t.Setenv("AGENT_FORGE_HOME", "")
+
+	if err := store.Init(); err != nil {
+		t.Fatalf("store.Init failed: %v", err)
+	}
+
+	taskStore := store.NewTaskStore(store.BaseDir())
+	taskID := "task-cli-stop"
+	tsk := task.NewTask(taskID, "Completed Task", "desc", "default", task.TaskConfig{
+		MaxParallelWorkers: 1,
+		SessionTimeout:     "30s",
+		WorkspaceDir:       t.TempDir(),
+	})
+	tsk.Status = task.StatusCompleted
+	tsk.UpdatedAt = time.Now()
+	if err := taskStore.Create(tsk); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+
+	cmd := newStopCmd()
+	if err := cmd.Flags().Set("force", "true"); err != nil {
+		t.Fatalf("set force flag: %v", err)
+	}
+	if err := runStop(cmd, []string{taskID}); err == nil {
+		t.Fatal("Expected stop to fail for completed task")
+	}
+
+	updated, err := taskStore.Get(taskID)
+	if err != nil {
+		t.Fatalf("Get task failed: %v", err)
+	}
+	if updated.Status != task.StatusCompleted {
+		t.Fatalf("Expected completed task to remain completed, got %s", updated.Status)
 	}
 }

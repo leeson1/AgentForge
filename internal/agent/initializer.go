@@ -39,10 +39,10 @@ func NewInitializer(executor *session.Executor, taskStore *store.TaskStore, sess
 
 // InitResult Initializer 执行结果
 type InitResult struct {
-	Session     *session.Session  `json:"session"`
-	FeatureList *task.FeatureList `json:"feature_list,omitempty"`
-	ProgressContent string        `json:"progress_content,omitempty"`
-	Error       string            `json:"error,omitempty"`
+	Session         *session.Session  `json:"session"`
+	FeatureList     *task.FeatureList `json:"feature_list,omitempty"`
+	ProgressContent string            `json:"progress_content,omitempty"`
+	Error           string            `json:"error,omitempty"`
 }
 
 // Run 执行 Initializer 流程
@@ -53,11 +53,13 @@ type InitResult struct {
 // 5. 保存结果，状态转换：initializing → planning
 func (init *Initializer) Run(t *task.Task, tmpl *template.Template) (*InitResult, error) {
 	// 1. 状态转换：pending → initializing
-	if err := t.TransitionTo(task.StatusInitializing); err != nil {
-		return nil, fmt.Errorf("failed to transition task to initializing: %w", err)
-	}
-	if err := init.taskStore.Update(t); err != nil {
-		return nil, fmt.Errorf("failed to update task status: %w", err)
+	if t.Status != task.StatusInitializing {
+		if err := t.TransitionTo(task.StatusInitializing); err != nil {
+			return nil, fmt.Errorf("failed to transition task to initializing: %w", err)
+		}
+		if err := init.taskStore.Update(t); err != nil {
+			return nil, fmt.Errorf("failed to update task status: %w", err)
+		}
 	}
 
 	// 2. 构建 prompt
@@ -153,8 +155,8 @@ func (init *Initializer) Run(t *task.Task, tmpl *template.Template) (*InitResult
 	}
 
 	return &InitResult{
-		Session:     sess,
-		FeatureList: featureList,
+		Session:         sess,
+		FeatureList:     featureList,
 		ProgressContent: progressContent,
 	}, nil
 }

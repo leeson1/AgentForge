@@ -298,9 +298,7 @@ func runStop(cmd *cobra.Command, args []string) error {
 	}
 
 	if err := t.TransitionTo(task.StatusCancelled); err != nil {
-		// 直接强制设置状态
-		t.Status = task.StatusCancelled
-		t.UpdatedAt = time.Now()
+		return fmt.Errorf("task cannot be stopped from status %s: %w", t.Status, err)
 	}
 	if err := taskStore.Update(t); err != nil {
 		return fmt.Errorf("update task: %w", err)

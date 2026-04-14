@@ -13,27 +13,28 @@ import (
 
 	"github.com/leeson1/agent-forge/internal/config"
 	"github.com/leeson1/agent-forge/internal/notify"
+	"github.com/leeson1/agent-forge/internal/session"
 )
 
 // SessionStatus Session 状态
 type SessionStatus struct {
-	SessionID      string
-	TaskID         string
-	FeatureID      string
-	RetryCount     int
-	LastError      string
-	TotalTokens    int
-	LastToolCall   string
-	SameToolCount  int
-	StartedAt      time.Time
+	SessionID     string
+	TaskID        string
+	FeatureID     string
+	RetryCount    int
+	LastError     string
+	TotalTokens   int
+	LastToolCall  string
+	SameToolCount int
+	StartedAt     time.Time
 }
 
 // RecoveryManager 错误恢复管理器
 type RecoveryManager struct {
-	mu        sync.Mutex
-	sessions  map[string]*SessionStatus
-	cfg       *config.Config
-	notifier  notify.Notifier
+	mu         sync.Mutex
+	sessions   map[string]*SessionStatus
+	cfg        *config.Config
+	notifier   notify.Notifier
 	maxRetries int
 }
 
@@ -303,19 +304,10 @@ func ScanRunningTasks(baseDir string) []TaskScanResult {
 			continue
 		}
 
-		// 检查进程是否存活
-		process, err := os.FindProcess(pid)
-		alive := false
-		if err == nil && process != nil {
-			// 发送 signal 0 检测进程存活
-			err = process.Signal(os.Signal(nil))
-			alive = err == nil
-		}
-
 		results = append(results, TaskScanResult{
 			TaskID:    taskID,
 			PID:       pid,
-			IsRunning: alive,
+			IsRunning: session.IsProcessAlive(pid),
 		})
 	}
 
