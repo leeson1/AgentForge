@@ -32,24 +32,27 @@ type ServerConfig struct {
 
 // NotificationConfig 通知配置
 type NotificationConfig struct {
-	WebhookURL     string                      `json:"webhook_url"`
-	EnabledEvents  map[notify.EventType]bool    `json:"enabled_events"`
-	Headers        map[string]string            `json:"headers,omitempty"`
+	WebhookURL    string                    `json:"webhook_url"`
+	EnabledEvents map[notify.EventType]bool `json:"enabled_events"`
+	Headers       map[string]string         `json:"headers,omitempty"`
 }
 
 // CLIConfig CLI 相关配置
 type CLIConfig struct {
+	Provider       string `json:"provider"`
 	ClaudePath     string `json:"claude_path"`
+	CodexPath      string `json:"codex_path"`
+	Model          string `json:"model,omitempty"`
 	MaxRetries     int    `json:"max_retries"`
 	DefaultTimeout string `json:"default_timeout"`
 }
 
 // CostConfig 成本监控配置
 type CostConfig struct {
-	AlertThreshold    float64 `json:"alert_threshold"`     // 告警阈值（美元）
-	HardLimit         float64 `json:"hard_limit"`          // 硬限制（美元），超过自动暂停
-	InputCostPerMil   float64 `json:"input_cost_per_mil"`  // 每百万 input token 成本
-	OutputCostPerMil  float64 `json:"output_cost_per_mil"` // 每百万 output token 成本
+	AlertThreshold   float64 `json:"alert_threshold"`     // 告警阈值（美元）
+	HardLimit        float64 `json:"hard_limit"`          // 硬限制（美元），超过自动暂停
+	InputCostPerMil  float64 `json:"input_cost_per_mil"`  // 每百万 input token 成本
+	OutputCostPerMil float64 `json:"output_cost_per_mil"` // 每百万 output token 成本
 }
 
 // DefaultConfig 返回默认配置
@@ -68,15 +71,17 @@ func DefaultConfig() *Config {
 			},
 		},
 		CLI: CLIConfig{
+			Provider:       "claude",
 			ClaudePath:     "claude",
+			CodexPath:      "codex",
 			MaxRetries:     3,
 			DefaultTimeout: "30m",
 		},
 		Cost: CostConfig{
 			AlertThreshold:   10.0,
 			HardLimit:        50.0,
-			InputCostPerMil:  3.0,   // Claude Sonnet input
-			OutputCostPerMil: 15.0,  // Claude Sonnet output
+			InputCostPerMil:  3.0,  // Claude Sonnet input
+			OutputCostPerMil: 15.0, // Claude Sonnet output
 		},
 	}
 }

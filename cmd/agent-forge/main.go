@@ -38,7 +38,7 @@ func main() {
 		Use:   "agent-forge",
 		Short: "AgentForge - Long-running Agent management system",
 		Long: fmt.Sprintf(`%s🔨 AgentForge v%s%s
-A universal framework for long-running AI agent tasks powered by Claude Code CLI.
+A universal framework for long-running AI agent tasks powered by Claude Code CLI or Codex CLI.
 Manage parallel agents, templates, and real-time monitoring.`, colorBold, version, colorReset),
 		Version: version,
 	}

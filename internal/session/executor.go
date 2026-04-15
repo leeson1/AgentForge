@@ -18,9 +18,17 @@ import (
 // EventHandler 处理 SessionEvent 的回调函数
 type EventHandler func(event *SessionEvent)
 
+const (
+	ProviderClaude = "claude"
+	ProviderCodex  = "codex"
+)
+
 // ExecutorConfig 执行器配置
 type ExecutorConfig struct {
+	Provider     string        // agent CLI provider: claude or codex
 	ClaudePath   string        // claude CLI 路径，默认 "claude"
+	CodexPath    string        // codex CLI 路径，默认 "codex"
+	Model        string        // 可选模型名
 	MaxTurns     int           // 最大对话轮数
 	Timeout      time.Duration // Session 超时
 	AllowedTools []string      // 允许的工具列表
@@ -30,7 +38,9 @@ type ExecutorConfig struct {
 // DefaultExecutorConfig 默认配置
 func DefaultExecutorConfig() ExecutorConfig {
 	return ExecutorConfig{
+		Provider:     ProviderClaude,
 		ClaudePath:   "claude",
+		CodexPath:    "codex",
 		MaxTurns:     50,
 		Timeout:      30 * time.Minute,
 		AllowedTools: nil, // nil 表示不限制
@@ -38,7 +48,7 @@ func DefaultExecutorConfig() ExecutorConfig {
 	}
 }
 
-// Executor Claude Code CLI 进程执行器
+// Executor agent CLI 进程执行器
 type Executor struct {
 	config  ExecutorConfig
 	mu      sync.RWMutex
@@ -60,13 +70,13 @@ type runningProcess struct {
 // NewExecutor 创建执行器
 func NewExecutor(baseDir string, config ExecutorConfig) *Executor {
 	return &Executor{
-		config:  config,
+		config:  normalizeExecutorConfig(config),
 		procs:   make(map[string]*runningProcess),
 		baseDir: baseDir,
 	}
 }
 
-// Start 启动一个 Claude Code CLI 会话
+// Start 启动一个 agent CLI 会话
 // 返回 session 对象和事件 channel
 func (e *Executor) Start(sess *Session, prompt string, handler EventHandler) error {
 	e.mu.Lock()
@@ -77,9 +87,10 @@ func (e *Executor) Start(sess *Session, prompt string, handler EventHandler) err
 	e.mu.Unlock()
 
 	// 构建命令
-	ctx, cancel := context.WithTimeout(context.Background(), e.config.Timeout)
-	args := e.buildArgs(sess)
-	cmd := exec.CommandContext(ctx, e.config.ClaudePath, args...)
+	config := e.Config()
+	ctx, cancel := context.WithTimeout(context.Background(), config.Timeout)
+	path, args := buildCommand(config, sess)
+	cmd := exec.CommandContext(ctx, path, args...)
 	cmd.Dir = sess.WorkDir
 
 	// 设置 stdin（通过管道写入 prompt）
@@ -89,7 +100,7 @@ func (e *Executor) Start(sess *Session, prompt string, handler EventHandler) err
 		return fmt.Errorf("failed to create stdin pipe: %w", err)
 	}
 
-	// 设置 stdout（实时读取 stream-json）
+	// 设置 stdout（实时读取 provider 事件流）
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		cancel()
@@ -118,7 +129,7 @@ func (e *Executor) Start(sess *Session, prompt string, handler EventHandler) err
 	// 启动进程
 	if err := cmd.Start(); err != nil {
 		cancel()
-		return fmt.Errorf("failed to start claude: %w", err)
+		return fmt.Errorf("failed to start %s: %w", providerFromConfig(config), err)
 	}
 
 	proc := &runningProcess{
@@ -166,7 +177,7 @@ func (e *Executor) Start(sess *Session, prompt string, handler EventHandler) err
 		}
 	}()
 
-	// 实时解析 stdout stream-json
+	// 实时解析 stdout event stream
 	go func() {
 		defer close(proc.done)
 		defer func() {
@@ -185,7 +196,7 @@ func (e *Executor) Start(sess *Session, prompt string, handler EventHandler) err
 				continue
 			}
 
-			events, err := ParseStreamLine(line)
+			events, err := parseProviderLine(config, line)
 			if err != nil {
 				// 解析失败也转发为系统事件
 				if handler != nil {
@@ -193,13 +204,19 @@ func (e *Executor) Start(sess *Session, prompt string, handler EventHandler) err
 						Timestamp: time.Now(),
 						Type:      SEventSystem,
 						SessionID: sess.ID,
-						Text:      "[parse error] " + string(line),
+						Text:      "[unparsed] " + string(line),
 					})
 				}
 				continue
 			}
 
 			for _, event := range events {
+				if event == nil {
+					continue
+				}
+				if event.SessionID == "" {
+					event.SessionID = sess.ID
+				}
 				event.RawJSON = string(line)
 				if handler != nil {
 					handler(event)
@@ -286,8 +303,75 @@ func (e *Executor) RunningCount() int {
 	return len(e.procs)
 }
 
-// buildArgs 构建 claude CLI 命令行参数
-func (e *Executor) buildArgs(sess *Session) []string {
+// Config returns a snapshot of the current executor config.
+func (e *Executor) Config() ExecutorConfig {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	return e.config
+}
+
+// UpdateConfig updates the executor config for future sessions.
+func (e *Executor) UpdateConfig(config ExecutorConfig) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.config = normalizeExecutorConfig(config)
+}
+
+func normalizeExecutorConfig(config ExecutorConfig) ExecutorConfig {
+	if config.ClaudePath == "" {
+		config.ClaudePath = "claude"
+	}
+	if config.CodexPath == "" {
+		config.CodexPath = "codex"
+	}
+	if config.Timeout <= 0 {
+		config.Timeout = 30 * time.Minute
+	}
+	if config.MaxRetries <= 0 {
+		config.MaxRetries = 3
+	}
+	config.Provider = providerFromConfig(config)
+	return config
+}
+
+func providerFromConfig(config ExecutorConfig) string {
+	provider := strings.ToLower(strings.TrimSpace(config.Provider))
+	switch provider {
+	case ProviderCodex:
+		return ProviderCodex
+	default:
+		return ProviderClaude
+	}
+}
+
+func buildCommand(config ExecutorConfig, sess *Session) (string, []string) {
+	switch providerFromConfig(config) {
+	case ProviderCodex:
+		path := config.CodexPath
+		if path == "" {
+			path = "codex"
+		}
+		return path, buildCodexArgs(config, sess)
+	default:
+		path := config.ClaudePath
+		if path == "" {
+			path = "claude"
+		}
+		return path, buildClaudeArgs(config, sess)
+	}
+}
+
+func parseProviderLine(config ExecutorConfig, line []byte) ([]*SessionEvent, error) {
+	switch providerFromConfig(config) {
+	case ProviderCodex:
+		return ParseCodexJSONLine(line)
+	default:
+		return ParseStreamLine(line)
+	}
+}
+
+// buildClaudeArgs 构建 claude CLI 命令行参数
+func buildClaudeArgs(config ExecutorConfig, sess *Session) []string {
 	args := []string{
 		"--print",
 		"--output-format", "stream-json",
@@ -295,15 +379,32 @@ func (e *Executor) buildArgs(sess *Session) []string {
 		"--dangerously-skip-permissions",
 	}
 
-	if e.config.MaxTurns > 0 {
-		args = append(args, "--max-turns", strconv.Itoa(e.config.MaxTurns))
+	if config.MaxTurns > 0 {
+		args = append(args, "--max-turns", strconv.Itoa(config.MaxTurns))
 	}
 
-	if len(e.config.AllowedTools) > 0 {
-		args = append(args, "--allowedTools", strings.Join(e.config.AllowedTools, ","))
+	if len(config.AllowedTools) > 0 {
+		args = append(args, "--allowedTools", strings.Join(config.AllowedTools, ","))
 	}
 
 	return args
+}
+
+// buildCodexArgs 构建 Codex CLI 命令行参数。
+func buildCodexArgs(config ExecutorConfig, sess *Session) []string {
+	args := []string{
+		"exec",
+		"--json",
+		"--dangerously-bypass-approvals-and-sandbox",
+		"--skip-git-repo-check",
+		"-C", sess.WorkDir,
+	}
+
+	if config.Model != "" {
+		args = append(args, "--model", config.Model)
+	}
+
+	return append(args, "-")
 }
 
 // PID 文件管理

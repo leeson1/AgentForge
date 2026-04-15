@@ -1,6 +1,6 @@
 # AgentForge
 
-A universal framework for long-running AI agent tasks powered by Claude Code CLI.
+A universal framework for long-running AI agent tasks powered by Claude Code CLI or Codex CLI.
 
 AgentForge manages parallel agents with template/plugin mechanisms, real-time monitoring via Web UI, and three-level merge conflict resolution.
 
@@ -34,7 +34,7 @@ AgentForge manages parallel agents with template/plugin mechanisms, real-time mo
 │  │Initializer│ │  Workers  │  │   Resolver   │  │
 │  │  Agent    │  │ (Parallel)│  │   Agent      │  │
 │  └──────────┘  └───────────┘  └──────────────┘  │
-│                Claude Code CLI (stream-json)      │
+│          Claude Code CLI / Codex CLI event stream  │
 └──────────────────────────────────────────────────┘
                        │
                   File System Storage
@@ -108,7 +108,7 @@ agent-forge template list
 │   ├── notify/              # Webhook notification system
 │   ├── recovery/            # Error recovery & cost monitoring
 │   ├── server/              # HTTP server, WebSocket hub, REST API handlers
-│   ├── session/             # Claude CLI executor, worktree manager, branch merger
+│   ├── session/             # Agent CLI executor, worktree manager, branch merger
 │   ├── store/               # File-system persistence (tasks, sessions, logs)
 │   ├── stream/              # EventBus pub/sub system
 │   ├── task/                # Task model, scheduler (Kahn's), batch manager
@@ -145,13 +145,29 @@ Configuration file: `~/.agent-forge/config.json`
     }
   },
   "cli": {
+    "provider": "claude",
     "claude_path": "claude",
+    "codex_path": "codex",
+    "model": "",
     "max_retries": 3,
     "default_timeout": "30m"
   },
   "cost": {
     "alert_threshold": 10.0,
     "hard_limit": 50.0
+  }
+}
+```
+
+To run tasks with Codex CLI instead of Claude Code CLI:
+
+```json
+{
+  "cli": {
+    "provider": "codex",
+    "codex_path": "codex",
+    "model": "gpt-5.4",
+    "default_timeout": "30m"
   }
 }
 ```

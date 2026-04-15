@@ -15,6 +15,12 @@ func TestDefaultConfig(t *testing.T) {
 	if cfg.CLI.ClaudePath != "claude" {
 		t.Errorf("Expected claude path 'claude', got %q", cfg.CLI.ClaudePath)
 	}
+	if cfg.CLI.Provider != "claude" {
+		t.Errorf("Expected provider 'claude', got %q", cfg.CLI.Provider)
+	}
+	if cfg.CLI.CodexPath != "codex" {
+		t.Errorf("Expected codex path 'codex', got %q", cfg.CLI.CodexPath)
+	}
 	if cfg.Cost.AlertThreshold != 10.0 {
 		t.Errorf("Expected alert threshold 10.0, got %f", cfg.Cost.AlertThreshold)
 	}
@@ -36,7 +42,7 @@ func TestLoadConfig_Valid(t *testing.T) {
 
 	data := `{
 		"server": {"host": "127.0.0.1", "port": 9090},
-		"cli": {"claude_path": "/usr/local/bin/claude", "max_retries": 5}
+		"cli": {"provider": "codex", "claude_path": "/usr/local/bin/claude", "codex_path": "/usr/local/bin/codex", "model": "gpt-5.4", "max_retries": 5}
 	}`
 	os.WriteFile(path, []byte(data), 0644)
 
@@ -49,6 +55,15 @@ func TestLoadConfig_Valid(t *testing.T) {
 	}
 	if cfg.CLI.ClaudePath != "/usr/local/bin/claude" {
 		t.Errorf("Expected custom claude path, got %q", cfg.CLI.ClaudePath)
+	}
+	if cfg.CLI.Provider != "codex" {
+		t.Errorf("Expected provider codex, got %q", cfg.CLI.Provider)
+	}
+	if cfg.CLI.CodexPath != "/usr/local/bin/codex" {
+		t.Errorf("Expected custom codex path, got %q", cfg.CLI.CodexPath)
+	}
+	if cfg.CLI.Model != "gpt-5.4" {
+		t.Errorf("Expected model gpt-5.4, got %q", cfg.CLI.Model)
 	}
 	if cfg.CLI.MaxRetries != 5 {
 		t.Errorf("Expected max_retries 5, got %d", cfg.CLI.MaxRetries)

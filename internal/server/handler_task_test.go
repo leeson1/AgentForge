@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/leeson1/agent-forge/internal/config"
 	"github.com/leeson1/agent-forge/internal/session"
 	"github.com/leeson1/agent-forge/internal/store"
 	"github.com/leeson1/agent-forge/internal/stream"
@@ -28,7 +29,7 @@ func setupTestServer(t *testing.T) *Server {
 	if err != nil {
 		t.Fatalf("load templates: %v", err)
 	}
-	return NewServer(eb, ts, ss, ls, exec, registry)
+	return NewServer(eb, ts, ss, ls, exec, registry, config.DefaultConfig())
 }
 
 func TestHealthCheck(t *testing.T) {

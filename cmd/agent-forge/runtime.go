@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"time"
 
 	"github.com/leeson1/agent-forge/internal/config"
 	"github.com/leeson1/agent-forge/internal/server"
@@ -41,19 +40,7 @@ func bootstrapRuntime() (*appRuntime, error) {
 	logStore := store.NewLogStore(baseDir)
 	eventBus := stream.NewEventBus(256)
 
-	execConfig := session.DefaultExecutorConfig()
-	if cfg.CLI.ClaudePath != "" {
-		execConfig.ClaudePath = cfg.CLI.ClaudePath
-	}
-	if cfg.CLI.MaxRetries > 0 {
-		execConfig.MaxRetries = cfg.CLI.MaxRetries
-	}
-	if cfg.CLI.DefaultTimeout != "" {
-		if timeout, err := time.ParseDuration(cfg.CLI.DefaultTimeout); err == nil {
-			execConfig.Timeout = timeout
-		}
-	}
-	executor := session.NewExecutor(baseDir, execConfig)
+	executor := session.NewExecutor(baseDir, server.ExecutorConfigFromConfig(cfg))
 
 	templateRegistry, err := template.NewRegistryWithBuiltins()
 	if err != nil {
@@ -61,7 +48,7 @@ func bootstrapRuntime() (*appRuntime, error) {
 	}
 
 	pipeline := server.NewPipeline(executor, taskStore, sessionStore, logStore, eventBus, templateRegistry)
-	httpServer := server.NewServer(eventBus, taskStore, sessionStore, logStore, executor, templateRegistry)
+	httpServer := server.NewServer(eventBus, taskStore, sessionStore, logStore, executor, templateRegistry, cfg)
 
 	return &appRuntime{
 		cfg:              cfg,

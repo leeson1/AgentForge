@@ -30,12 +30,12 @@ type RawStreamEvent struct {
 	Message *AssistantMessage `json:"message,omitempty"`
 
 	// result 事件字段
-	IsError      bool    `json:"is_error,omitempty"`
-	DurationMs   int64   `json:"duration_ms,omitempty"`
-	NumTurns     int     `json:"num_turns,omitempty"`
-	Result       string  `json:"result,omitempty"`
-	StopReason   string  `json:"stop_reason,omitempty"`
-	TotalCostUSD float64 `json:"total_cost_usd,omitempty"`
+	IsError      bool       `json:"is_error,omitempty"`
+	DurationMs   int64      `json:"duration_ms,omitempty"`
+	NumTurns     int        `json:"num_turns,omitempty"`
+	Result       string     `json:"result,omitempty"`
+	StopReason   string     `json:"stop_reason,omitempty"`
+	TotalCostUSD float64    `json:"total_cost_usd,omitempty"`
 	Usage        *UsageInfo `json:"usage,omitempty"`
 }
 
@@ -65,20 +65,48 @@ type UsageInfo struct {
 	ServiceTier              string `json:"service_tier,omitempty"`
 }
 
+// RawCodexEvent Codex CLI --json JSONL event.
+type RawCodexEvent struct {
+	Type     string      `json:"type"`
+	ThreadID string      `json:"thread_id,omitempty"`
+	Item     *CodexItem  `json:"item,omitempty"`
+	Usage    *CodexUsage `json:"usage,omitempty"`
+	Message  string      `json:"message,omitempty"`
+	Error    string      `json:"error,omitempty"`
+}
+
+// CodexItem is a single Codex rollout item.
+type CodexItem struct {
+	ID               string `json:"id,omitempty"`
+	Type             string `json:"type,omitempty"`
+	Text             string `json:"text,omitempty"`
+	Command          string `json:"command,omitempty"`
+	AggregatedOutput string `json:"aggregated_output,omitempty"`
+	Status           string `json:"status,omitempty"`
+	ExitCode         *int   `json:"exit_code,omitempty"`
+}
+
+// CodexUsage is the token usage emitted by turn.completed.
+type CodexUsage struct {
+	InputTokens       int64 `json:"input_tokens"`
+	CachedInputTokens int64 `json:"cached_input_tokens"`
+	OutputTokens      int64 `json:"output_tokens"`
+}
+
 // ContentBlock 内容块（text 或 tool_use）
 type ContentBlock struct {
-	Type  string `json:"type"`
-	Text  string `json:"text,omitempty"`
-	ID    string `json:"id,omitempty"`
-	Name  string `json:"name,omitempty"`
+	Type  string          `json:"type"`
+	Text  string          `json:"text,omitempty"`
+	ID    string          `json:"id,omitempty"`
+	Name  string          `json:"name,omitempty"`
 	Input json.RawMessage `json:"input,omitempty"`
 }
 
 // SessionEvent 解析后的结构化事件（供上层使用）
 type SessionEvent struct {
-	Timestamp time.Time       `json:"timestamp"`
+	Timestamp time.Time        `json:"timestamp"`
 	Type      SessionEventType `json:"type"`
-	SessionID string          `json:"session_id"`
+	SessionID string           `json:"session_id"`
 
 	// 不同类型携带不同字段
 	Text       string `json:"text,omitempty"`        // AgentMessage
@@ -139,6 +167,142 @@ func ParseStreamLine(line []byte) ([]*SessionEvent, error) {
 			RawJSON:   string(line),
 		}}, nil
 	}
+}
+
+// ParseCodexJSONLine parses a single Codex CLI --json JSONL record.
+func ParseCodexJSONLine(line []byte) ([]*SessionEvent, error) {
+	var raw RawCodexEvent
+	if err := json.Unmarshal(line, &raw); err != nil {
+		return nil, err
+	}
+
+	now := time.Now()
+	switch raw.Type {
+	case "thread.started":
+		return []*SessionEvent{{
+			Timestamp: now,
+			Type:      SEventInit,
+			SessionID: raw.ThreadID,
+			Text:      "Codex thread started",
+		}}, nil
+	case "turn.started":
+		return []*SessionEvent{{
+			Timestamp: now,
+			Type:      SEventSystem,
+			Text:      "Codex turn started",
+		}}, nil
+	case "item.started", "item.completed":
+		return parseCodexItemEvent(raw, now), nil
+	case "turn.completed":
+		ev := &SessionEvent{
+			Timestamp:  now,
+			Type:       SEventResult,
+			StopReason: "turn_completed",
+		}
+		if raw.Usage != nil {
+			ev.InputTokens = raw.Usage.InputTokens
+			ev.OutputTokens = raw.Usage.OutputTokens
+		}
+		return []*SessionEvent{ev}, nil
+	case "error":
+		text := raw.Error
+		if text == "" {
+			text = raw.Message
+		}
+		return []*SessionEvent{{
+			Timestamp: now,
+			Type:      SEventError,
+			IsError:   true,
+			Text:      text,
+		}}, nil
+	default:
+		return []*SessionEvent{{
+			Timestamp: now,
+			Type:      SEventSystem,
+			Text:      string(line),
+		}}, nil
+	}
+}
+
+func parseCodexItemEvent(raw RawCodexEvent, ts time.Time) []*SessionEvent {
+	if raw.Item == nil {
+		return []*SessionEvent{{
+			Timestamp: ts,
+			Type:      SEventSystem,
+			Text:      string(mustJSON(raw)),
+		}}
+	}
+
+	item := raw.Item
+	switch item.Type {
+	case "agent_message":
+		if item.Text == "" {
+			return nil
+		}
+		return []*SessionEvent{{
+			Timestamp: ts,
+			Type:      SEventAgentMessage,
+			Text:      item.Text,
+		}}
+	case "command_execution":
+		if raw.Type == "item.started" {
+			return []*SessionEvent{{
+				Timestamp: ts,
+				Type:      SEventToolCall,
+				ToolName:  "shell",
+				ToolInput: item.Command,
+			}}
+		}
+
+		text := "[command] " + item.Command
+		if item.ExitCode != nil {
+			text += "\nexit_code: " + itoa64(int64(*item.ExitCode))
+		}
+		if item.AggregatedOutput != "" {
+			text += "\n" + item.AggregatedOutput
+		}
+		return []*SessionEvent{{
+			Timestamp: ts,
+			Type:      SEventSystem,
+			Text:      text,
+		}}
+	default:
+		return []*SessionEvent{{
+			Timestamp: ts,
+			Type:      SEventSystem,
+			Text:      string(mustJSON(raw)),
+		}}
+	}
+}
+
+func mustJSON(v interface{}) []byte {
+	data, err := json.Marshal(v)
+	if err != nil {
+		return nil
+	}
+	return data
+}
+
+func itoa64(n int64) string {
+	if n == 0 {
+		return "0"
+	}
+	neg := n < 0
+	if neg {
+		n = -n
+	}
+	var buf [20]byte
+	pos := len(buf)
+	for n > 0 {
+		pos--
+		buf[pos] = byte('0' + n%10)
+		n /= 10
+	}
+	if neg {
+		pos--
+		buf[pos] = '-'
+	}
+	return string(buf[pos:])
 }
 
 func parseSystemEvent(raw RawStreamEvent, ts time.Time) *SessionEvent {

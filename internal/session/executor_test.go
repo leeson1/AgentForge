@@ -94,6 +94,77 @@ echo '{"type":"result","subtype":"success","is_error":false,"duration_ms":100,"n
 	}
 }
 
+func TestExecutor_StartAndWaitCodexProvider(t *testing.T) {
+	tmpDir := t.TempDir()
+	taskDir := filepath.Join(tmpDir, "tasks", "test-task", "sessions")
+	if err := os.MkdirAll(taskDir, 0755); err != nil {
+		t.Fatalf("failed to create task dir: %v", err)
+	}
+
+	workDir := t.TempDir()
+
+	mockScript := filepath.Join(tmpDir, "mock-codex.sh")
+	scriptContent := `#!/bin/bash
+if [ "$1" != "exec" ]; then
+  echo "expected exec subcommand, got $1" >&2
+  exit 2
+fi
+cat > /dev/null
+echo '{"type":"thread.started","thread_id":"codex-thread"}'
+echo '{"type":"turn.started"}'
+echo '{"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"Hello from codex mock"}}'
+echo '{"type":"turn.completed","usage":{"input_tokens":11,"cached_input_tokens":0,"output_tokens":7}}'
+`
+	if err := os.WriteFile(mockScript, []byte(scriptContent), 0755); err != nil {
+		t.Fatalf("failed to write mock script: %v", err)
+	}
+
+	config := ExecutorConfig{
+		Provider:   ProviderCodex,
+		CodexPath:  mockScript,
+		Timeout:    10 * time.Second,
+		MaxRetries: 1,
+	}
+
+	exec := NewExecutor(tmpDir, config)
+	sess := NewSession("codex-session", "test-task", TypeWorker, workDir)
+
+	var events []*SessionEvent
+	var mu sync.Mutex
+	handler := func(ev *SessionEvent) {
+		mu.Lock()
+		events = append(events, ev)
+		mu.Unlock()
+	}
+
+	if err := exec.Start(sess, "test prompt", handler); err != nil {
+		t.Fatalf("Start failed: %v", err)
+	}
+	exec.Wait("codex-session")
+
+	if sess.Status != SessionCompleted {
+		t.Fatalf("Session status: got %s, want %s", sess.Status, SessionCompleted)
+	}
+	if sess.Result.TokensInput != 11 || sess.Result.TokensOutput != 7 {
+		t.Fatalf("Unexpected token usage: %+v", sess.Result)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(events) < 3 {
+		t.Fatalf("Expected at least 3 events, got %d", len(events))
+	}
+	var sawMessage bool
+	for _, ev := range events {
+		if ev.Type == SEventAgentMessage && ev.Text == "Hello from codex mock" {
+			sawMessage = true
+		}
+	}
+	if !sawMessage {
+		t.Fatalf("Expected codex agent message event, got %+v", events)
+	}
+}
+
 func TestExecutor_Stop(t *testing.T) {
 	tmpDir := t.TempDir()
 	taskDir := filepath.Join(tmpDir, "tasks", "test-task", "sessions")

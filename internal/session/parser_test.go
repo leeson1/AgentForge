@@ -242,6 +242,69 @@ func TestParseStreamLine_UnknownType(t *testing.T) {
 	}
 }
 
+func TestParseCodexJSONLine_AgentMessage(t *testing.T) {
+	line := []byte(`{"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"OK"}}`)
+
+	events, err := ParseCodexJSONLine(line)
+	if err != nil {
+		t.Fatalf("ParseCodexJSONLine failed: %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("Expected 1 event, got %d", len(events))
+	}
+	if events[0].Type != SEventAgentMessage {
+		t.Fatalf("Type: got %s, want %s", events[0].Type, SEventAgentMessage)
+	}
+	if events[0].Text != "OK" {
+		t.Fatalf("Text: got %q, want OK", events[0].Text)
+	}
+}
+
+func TestParseCodexJSONLine_CommandExecution(t *testing.T) {
+	startLine := []byte(`{"type":"item.started","item":{"id":"item_1","type":"command_execution","command":"/bin/zsh -lc pwd","status":"in_progress"}}`)
+	events, err := ParseCodexJSONLine(startLine)
+	if err != nil {
+		t.Fatalf("ParseCodexJSONLine start failed: %v", err)
+	}
+	if len(events) != 1 || events[0].Type != SEventToolCall {
+		t.Fatalf("Expected tool call event, got %+v", events)
+	}
+	if events[0].ToolName != "shell" || events[0].ToolInput != "/bin/zsh -lc pwd" {
+		t.Fatalf("Unexpected tool event: %+v", events[0])
+	}
+
+	doneLine := []byte(`{"type":"item.completed","item":{"id":"item_1","type":"command_execution","command":"/bin/zsh -lc pwd","aggregated_output":"/tmp\n","exit_code":0,"status":"completed"}}`)
+	events, err = ParseCodexJSONLine(doneLine)
+	if err != nil {
+		t.Fatalf("ParseCodexJSONLine done failed: %v", err)
+	}
+	if len(events) != 1 || events[0].Type != SEventSystem {
+		t.Fatalf("Expected system event, got %+v", events)
+	}
+	if events[0].Text == "" {
+		t.Fatal("Expected command output text")
+	}
+}
+
+func TestParseCodexJSONLine_TurnCompleted(t *testing.T) {
+	line := []byte(`{"type":"turn.completed","usage":{"input_tokens":123,"cached_input_tokens":10,"output_tokens":45}}`)
+
+	events, err := ParseCodexJSONLine(line)
+	if err != nil {
+		t.Fatalf("ParseCodexJSONLine failed: %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("Expected 1 event, got %d", len(events))
+	}
+	ev := events[0]
+	if ev.Type != SEventResult {
+		t.Fatalf("Type: got %s, want %s", ev.Type, SEventResult)
+	}
+	if ev.InputTokens != 123 || ev.OutputTokens != 45 {
+		t.Fatalf("Unexpected token usage: %+v", ev)
+	}
+}
+
 func TestExtractTokenUsage(t *testing.T) {
 	ev := &SessionEvent{
 		InputTokens:  1000,

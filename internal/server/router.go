@@ -11,6 +11,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
+	"github.com/leeson1/agent-forge/internal/config"
 	"github.com/leeson1/agent-forge/internal/session"
 	"github.com/leeson1/agent-forge/internal/store"
 	"github.com/leeson1/agent-forge/internal/stream"
@@ -28,6 +29,8 @@ type Server struct {
 	logStore         *store.LogStore
 	executor         *session.Executor
 	pipeline         *Pipeline
+	cfg              *config.Config
+	configMu         sync.RWMutex
 	runPipeline      func(*task.Task)
 	taskLifecycleMu  sync.Mutex
 	templateRegistry *template.Registry
@@ -41,9 +44,13 @@ func NewServer(
 	logStore *store.LogStore,
 	executor *session.Executor,
 	templateRegistry *template.Registry,
+	cfg *config.Config,
 ) *Server {
 	hub := NewWSHub(eventBus)
 	go hub.Run()
+	if cfg == nil {
+		cfg = config.DefaultConfig()
+	}
 
 	s := &Server{
 		hub:              hub,
@@ -52,6 +59,7 @@ func NewServer(
 		sessionStore:     sessionStore,
 		logStore:         logStore,
 		executor:         executor,
+		cfg:              cfg,
 		templateRegistry: templateRegistry,
 	}
 	s.pipeline = NewPipeline(executor, taskStore, sessionStore, logStore, eventBus, templateRegistry)
@@ -128,6 +136,10 @@ func (s *Server) setupRouter() chi.Router {
 
 		// 健康检查
 		r.Get("/health", s.HealthCheck)
+
+		// Runtime configuration
+		r.Get("/config", s.GetConfig)
+		r.Put("/config", s.UpdateConfig)
 	})
 
 	// 前端静态文件服务（SPA fallback）

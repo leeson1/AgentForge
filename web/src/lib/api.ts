@@ -89,6 +89,32 @@ export interface TemplateInfo {
   category: string;
 }
 
+export interface AppConfig {
+  server: {
+    host: string;
+    port: number;
+  };
+  notification: {
+    webhook_url: string;
+    enabled_events: Record<string, boolean>;
+    headers?: Record<string, string>;
+  };
+  cli: {
+    provider: 'claude' | 'codex';
+    claude_path: string;
+    codex_path: string;
+    model?: string;
+    max_retries: number;
+    default_timeout: string;
+  };
+  cost: {
+    alert_threshold: number;
+    hard_limit: number;
+    input_cost_per_mil: number;
+    output_cost_per_mil: number;
+  };
+}
+
 /** WebSocket 事件 (来自后端 EventBus) */
 export interface WSEvent {
   id: string;
@@ -162,6 +188,12 @@ export const api = {
 
   // Templates
   listTemplates: () => request<TemplateInfo[]>('/templates'),
+
+  // Config
+  getConfig: () => request<AppConfig>('/config'),
+
+  updateConfig: (data: AppConfig) =>
+    request<AppConfig>('/config', { method: 'PUT', body: JSON.stringify(data) }),
 
   // Health
   health: () => request<{ status: string }>('/health'),
